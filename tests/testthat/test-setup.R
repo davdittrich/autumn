@@ -85,6 +85,16 @@ test_that("error conditions in check data issues", {
 
   # Works fine otherwise
   expect_null(check_any_data_issues(respondent_data, ns_target, weights))
+
+  # Regression: when target has a level absent from data, error must name
+  # the missing level (was blank due to target_errors vs data_errors bug)
+  t_missing_level = ns_target
+  t_missing_level[["gender"]] = c("Male" = 0.45, "Female" = 0.45, "Nonbinary" = 0.10)
+  err_msg1 = tryCatch(
+    check_any_data_issues(respondent_data, t_missing_level, weights),
+    error = function(e) conditionMessage(e)
+  )
+  expect_match(err_msg1, "Nonbinary")
 })
 
 test_that("generating start weights", {

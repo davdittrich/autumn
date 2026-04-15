@@ -80,7 +80,7 @@ check_any_data_issues = function(data, target, weights) {
   if(nchar(data_errors) > 0) {
     stop("Errors detected in data. Some variables have values in the weight ",
          "targets which are not present in the data:\n",
-         target_errors)
+         data_errors)
   }
 
   # Do any variables in the target weights not sum to 1?
