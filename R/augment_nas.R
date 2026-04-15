@@ -20,7 +20,7 @@
 freeze_na_proportion = function(data, target, which_vars) {
   # Which variables are we freezing
   if(is.logical(which_vars)) which_vars = names(target)
-  else if(is.numeric(which_vars)) which_vars = names(target)[[which_vars]]
+  else if(is.numeric(which_vars)) which_vars = names(target)[which_vars]
 
   for(variable in which_vars) {
     # For this variable what percentage of the sample is missing?
@@ -63,7 +63,7 @@ freeze_na_proportion = function(data, target, which_vars) {
 update_na_values = function(data, target, which_vars) {
   # Which variables are we freezing
   if(is.logical(which_vars)) which_vars = names(target)
-  else if(is.numeric(which_vars)) which_vars = names(target)[[which_vars]]
+  else if(is.numeric(which_vars)) which_vars = names(target)[which_vars]
 
   for(variable in which_vars) {
     if(!any(is.na(data[[variable]]))) next

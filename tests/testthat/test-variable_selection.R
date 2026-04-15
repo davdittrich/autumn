@@ -31,6 +31,20 @@ test_that("individual select functions", {
   expect_known_hash(all_results, "d94b23f4ee")
 })
 
+test_that("select_number handles count larger than available variables", {
+  misses = c("a" = 0.05, "b" = 0.07, "c" = 0.08)
+
+  # Must not crash when count > length(misses)
+  result = select_number(misses, list(count = 999))
+  expect_no_error(select_number(misses, list(count = 999)))
+
+  # Result length must equal length(misses), not count
+  expect_length(result, length(misses))
+
+  # No NA names in result
+  expect_false(any(is.na(names(result))))
+})
+
 test_that("error when variable selection called with no unweighted", {
   data = data.frame("var1" = c(rep("a", 3), "b"))
   targets = list("var1" = c("a" = 0.75, "b" = 0.25))

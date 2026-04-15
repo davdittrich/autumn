@@ -6,7 +6,9 @@ select_pct = function(misses, select_params) {
 select_number = function(misses, select_params) {
   # Sort in a decreasing order of error; select the `count` worse variables,
   # then re-sort back in the original order, and return the subset.
-  misses[sort(order(misses, decreasing = TRUE)[1:select_params[["count"]]])]
+  misses[sort(order(misses, decreasing = TRUE)[
+    seq_len(min(select_params[["count"]], length(misses)))
+  ])]
 }
 
 select_all = function(misses, select_params) {

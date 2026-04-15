@@ -67,3 +67,14 @@ test_that("correctly re-label NAs in the actual data", {
     nrow(respondent_data[is.na(respondent_data$household_income), ])
   )
 })
+
+test_that("numeric vector of positions works for add_na_proportion", {
+  # Regression: [[which_vars]] crashes with length > 1 numeric vector
+  # Both freeze_na_proportion and update_na_values have this bug
+  expect_no_error(
+    freeze_na_proportion(respondent_data, ns_target, c(1, 3))
+  )
+  expect_no_error(
+    update_na_values(respondent_data, ns_target, c(1, 3))
+  )
+})
