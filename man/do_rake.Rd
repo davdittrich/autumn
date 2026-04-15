@@ -4,8 +4,16 @@
 \alias{do_rake}
 \title{Performs iterative raking on data}
 \usage{
-do_rake(data, target, weights, max_weight, max_iterations, convergence,
-  enforce_mean = TRUE, verbose)
+do_rake(
+  data,
+  target,
+  weights,
+  max_weight,
+  max_iterations,
+  convergence,
+  enforce_mean = TRUE,
+  verbose
+)
 }
 \arguments{
 \item{data}{The data frame (tibble) or matrix containing the original data}

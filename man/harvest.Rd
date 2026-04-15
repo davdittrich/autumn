@@ -4,12 +4,24 @@
 \alias{harvest}
 \title{Generate iterative raking weights for your data.}
 \usage{
-harvest(data, target, start_weights = 1, max_weight = 5,
-  max_iterations = 1000, select_params = c(pct = 0.05, count = 5),
-  convergence = c(pct = 0.01, absolute = 1e-06, time = NULL, single_weight =
-  NULL), select_function = "pct", error_function = "linear",
-  verbose = FALSE, attach_weights = TRUE, weight_column = NULL,
-  add_na_proportion = FALSE, target_map = NULL, enforce_mean = TRUE, ...)
+harvest(
+  data,
+  target,
+  start_weights = 1,
+  max_weight = 5,
+  max_iterations = 1000,
+  select_params = c(pct = 0.05, count = 5),
+  convergence = c(pct = 0.01, absolute = 1e-06, time = NULL, single_weight = NULL),
+  select_function = "pct",
+  error_function = "linear",
+  verbose = FALSE,
+  attach_weights = TRUE,
+  weight_column = NULL,
+  add_na_proportion = FALSE,
+  target_map = NULL,
+  enforce_mean = TRUE,
+  ...
+)
 }
 \arguments{
 \item{data}{A data frame (tibble) or matrix containing data to be raked. The
@@ -114,7 +126,7 @@ from becoming even lower weighted.}
 \item{...}{Additional arguments to this function are ignored}
 }
 \value{
-The original data frame \code{data} augmentd with a new column
+The original data frame \code{data} augmented with a new column
   containing the calculated weights if \code{attach_weights} is TRUE
   (default). If \code{attach_weights} is FALSE, a vector of numeric
   weights in the order of the supplied cases.

@@ -4,7 +4,8 @@
 \name{ns_target}
 \alias{ns_target}
 \title{Nationscape Target Proportions}
-\format{A list of named vectors containing 17 items, each of which is a
+\format{
+A list of named vectors containing 17 items, each of which is a
   named numeric vector.
 \describe{
   \item{gender}{Binary gender: "male" or "female"},
@@ -36,7 +37,8 @@
     \code{education}}
   \item{vote_2016}{2016 presidential vote: "Clinton", "Trump", "Other vote",
     "No vote"}
-}}
+}
+}
 \usage{
 ns_target
 }

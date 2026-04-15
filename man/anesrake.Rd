@@ -4,10 +4,24 @@
 \alias{anesrake}
 \title{Backwards compatibility function call syntax for anesrake}
 \usage{
-anesrake(inputter, dataframe, caseid = NULL, weightvec = NULL, cap = 5,
-  verbose = FALSE, maxit = 1000, type = "pctlim", pctlim = 5,
-  nlim = 5, filter = NULL, choosemethod = "total", iterate = NULL,
-  convcrit = 0.01, force1 = NULL, center.baseweights = NULL)
+anesrake(
+  inputter,
+  dataframe,
+  caseid = NULL,
+  weightvec = NULL,
+  cap = 5,
+  verbose = FALSE,
+  maxit = 1000,
+  type = "pctlim",
+  pctlim = 5,
+  nlim = 5,
+  filter = NULL,
+  choosemethod = "total",
+  iterate = NULL,
+  convcrit = 0.01,
+  force1 = NULL,
+  center.baseweights = NULL
+)
 }
 \arguments{
 \item{inputter}{Mapped to \code{\link{harvest}}'s \code{target} argument}

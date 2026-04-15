@@ -4,8 +4,12 @@
 \alias{get_current_miss}
 \title{Calculate current errors across variables}
 \usage{
-get_current_miss(data, target, weights = rep(1, nrow(data)),
-  error_function = current_miss_linear)
+get_current_miss(
+  data,
+  target,
+  weights = rep(1, nrow(data)),
+  error_function = current_miss_linear
+)
 }
 \arguments{
 \item{data}{A data frame (tibble) or matrix containing the variables being

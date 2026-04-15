@@ -4,7 +4,9 @@
 \name{respondent_data}
 \alias{respondent_data}
 \title{Survey respondents}
-\format{An object of class \code{data.frame} with 6703 rows and 18 columns.}
+\format{
+An object of class \code{data.frame} with 6703 rows and 18 columns.
+}
 \usage{
 respondent_data
 }
