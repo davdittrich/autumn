@@ -128,28 +128,32 @@ design_effect = function(weights, outcome = NULL, data = NULL, target = NULL) {
 
 #' Calculate effective sample size from weights
 #'
-#' This function calculates the effective sample size implied by the
-#' supplied weights. Because weighting inflates variance of quantities of
-#' interest, the effective sample size of a weighted sample is less than the
-#' nominal sample size. This function calls \code{\link{design_effect}}. If an
-#' outcome is not provided, \code{\link{design_effect}} implements the
-#' estimator from Kish (1992), which assumes no correlation between weights
-#' and outcomes. If an outcome  is provided, the function implements Spencer
-#' (2000).
+#' Returns the effective sample size implied by the supplied weights. Because
+#' weighting inflates variance, the effective sample size of a weighted sample
+#' is less than the nominal sample size.
 #'
-#' @param weights The weights for which an implied effective sample size is
-#'   designed
-#' @param outcome An vector outcome of interest. If NULL, this function
-#'   returns the Kish (1992) estimator of design effects. If numeric data is
-#'   provided, this function returns the Spencer (2000) estimator of design
-#'   effects conditional on the correlation between supplied weights and the
-#'   outcome of interest.
-#' @return A numeric effective sample size, which may be non-integer.
+#' @param weights A numeric vector of weights, or a data frame containing a
+#'   weight column. See \code{\link{design_effect}} for details.
+#' @param outcome Optional. A numeric outcome vector. See
+#'   \code{\link{design_effect}}.
+#' @param data Optional. The data frame supplied to \code{\link{harvest}}.
+#'   See \code{\link{design_effect}}.
+#' @param target Optional. The target proportions list supplied to
+#'   \code{\link{harvest}}. See \code{\link{design_effect}}.
+#' @return A numeric effective sample size (may be non-integer).
+#' @references
+#' Henry, K.A. & Valliant, R. (2015). A design effect measure for calibration
+#'   weighting in single-stage samples. \emph{Survey Methodology}, 41(2),
+#'   315--331.
 #' @export
-effective_sample_size = function(weights, outcome = NULL) {
+effective_sample_size = function(weights, outcome = NULL,
+                                 data = NULL, target = NULL) {
   if(is.data.frame(weights)) {
-    return(nrow(weights) / design_effect(weights, outcome))
+    # Legacy data-frame path: data and target must still be forwarded
+    return(nrow(weights) / design_effect(weights, outcome,
+                                         data = data, target = target))
   }
 
-  return(length(weights) / design_effect(weights, outcome))
+  return(length(weights) / design_effect(weights, outcome,
+                                          data = data, target = target))
 }
