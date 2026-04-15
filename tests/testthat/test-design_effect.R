@@ -21,3 +21,17 @@ test_that("basic code runthroughs of Kish effect and ESS", {
     "must be numeric"
   )
 })
+
+test_that("design_effect finds .weights_autumn when data has pre-existing weights column", {
+  skip_on_cran()
+
+  data_preweight = respondent_data
+  data_preweight$weights = 1
+  result_w = harvest(data_preweight, ns_target)
+  expect_true(".weights_autumn" %in% colnames(result_w))
+
+  # design_effect() must find .weights_autumn and return a numeric result
+  deff = design_effect(result_w)
+  expect_true(is.numeric(deff))
+  expect_false(is.na(deff))
+})

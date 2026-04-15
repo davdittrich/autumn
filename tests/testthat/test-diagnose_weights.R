@@ -40,4 +40,12 @@ test_that("initial error handling", {
   expect_equal(diagnostic_table$target,
                unname(unlist(ns_target)))
 
+  # Regression: when data has pre-existing 'weights' column, harvest() attaches
+  # '.weights_autumn' (no number). diagnose_weights() must find it.
+  data_preweight = respondent_data
+  data_preweight$weights = 1  # pre-existing weights column
+  result_w = harvest(data_preweight, ns_target)
+  expect_true(".weights_autumn" %in% colnames(result_w))
+  expect_no_error(diagnose_weights(result_w, ns_target))
+
 })

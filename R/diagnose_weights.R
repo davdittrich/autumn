@@ -69,7 +69,7 @@ diagnose_weights = function(data, target=NULL, weights=NULL) {
   }
 
   if(is.null(weights)) {
-    cand_weights = c("weights", paste0(".weights_autumn", 1:10))
+    cand_weights = c("weights", ".weights_autumn", paste0(".weights_autumn", 1:10))
     weight_var = cand_weights[which(cand_weights %in% colnames(data))[1]]
     if(is.na(weight_var)) {
       stop("Error: No `weights` specified and data does not contain a ",

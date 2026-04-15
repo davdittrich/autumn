@@ -16,7 +16,7 @@
 #' @export
 design_effect = function(weights, outcome = NULL) {
   if(is.data.frame(weights)) {
-    cand_weights = c("weights", paste0(".weights_autumn", 1:10))
+    cand_weights = c("weights", ".weights_autumn", paste0(".weights_autumn", 1:10))
     weight_var = cand_weights[which(cand_weights %in% colnames(weights))[1]]
     if(is.na(weight_var)) {
       stop("Error: design_effect requires a `weights` argument. If the ",
