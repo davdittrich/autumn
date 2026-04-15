@@ -34,3 +34,11 @@ test_that("unusual argument combinations for harvest", {
                    attach_weights = TRUE))[2],
     dim(respondent_data)[2] + 1)
 })
+
+test_that("target_symbol attribute stores caller's variable name", {
+  skip_on_cran()
+
+  result = harvest(respondent_data, ns_target)
+  # Must store "ns_target", not "target" (which is the local param name)
+  expect_equal(attr(result, "target_symbol"), "ns_target")
+})

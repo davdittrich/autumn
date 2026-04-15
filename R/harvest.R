@@ -278,7 +278,7 @@
 #'   becoming higher weighted, \code{enforce_mean} helps low-weight observations
 #'   from becoming even lower weighted.
 #' @param ... Additional arguments to this function are ignored
-#' @return The original data frame \code{data} augmentd with a new column
+#' @return The original data frame \code{data} augmented with a new column
 #'   containing the calculated weights if \code{attach_weights} is TRUE
 #'   (default). If \code{attach_weights} is FALSE, a vector of numeric
 #'   weights in the order of the supplied cases.
@@ -334,6 +334,9 @@ harvest = function(
   enforce_mean = TRUE,
   ...
 ) {
+  # Capture caller's symbol BEFORE any reassignment of `target`
+  target_symbol = deparse(substitute(target))
+
   # Check if user supplied any weird arguments
   check_any_startup_issues(data, target, convergence, ...)
 
@@ -470,6 +473,6 @@ harvest = function(
 
   new_column_name = name_weight_column(data, weight_column)
   data[[new_column_name]] = weights
-  attr(data, "target_symbol") = deparse(substitute(target))
+  attr(data, "target_symbol") = target_symbol
   return(data)
 }
