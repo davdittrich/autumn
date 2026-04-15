@@ -108,7 +108,7 @@ design_effect = function(weights, outcome = NULL, data = NULL, target = NULL) {
     stop("Henry design effect requires no NA values in `outcome`.")
   }
 
-  if(var(outcome) == 0) {
+  if(!is.finite(var(outcome)) || var(outcome) == 0) {
     stop("Henry design effect requires non-constant `outcome`; ",
          "var(outcome) == 0 yields undefined R\u00b2.")
   }
