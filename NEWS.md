@@ -1,3 +1,31 @@
+# autumn 0.2.0
+
+## Breaking Changes
+
+* `design_effect(weights, outcome)` previously used the Spencer (2000)
+  estimator, which is statistically invalid for raking/calibration weights:
+  Spencer assumes design weights w_i = 1/(n * P_i), but calibration weights
+  have no well-defined selection probability P_i. This call path now emits a
+  warning and falls back to the Kish (1992) estimator.
+
+  To use the outcome-aware Henry & Valliant (2015) estimator (recommended),
+  pass the raking data frame and target proportions:
+  `design_effect(weights, outcome, data, target)`
+
+## New Features
+
+* `design_effect()` and `effective_sample_size()` now accept optional `data`
+  and `target` arguments. When all three of `outcome`, `data`, and `target`
+  are supplied, the Henry & Valliant (2015) design effect is computed. This
+  estimator accounts for correlation between the outcome and the calibration
+  auxiliary variables: `deff_H = (1 - R^2_w) * deff_K`, where R^2_w is the
+  weighted R^2 from regressing the outcome on dummy-coded calibration
+  auxiliaries. If the calibration auxiliaries perfectly predict the outcome,
+  the design effect approaches 0.
+
+  Reference: Henry, K.A. & Valliant, R. (2015). Survey Methodology, 41(2),
+  315-331.
+
 # autumn 0.1.1
 
 ## Bug Fixes
