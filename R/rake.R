@@ -112,6 +112,8 @@ do_rake = function(data, target, weights,
     }
 
     # Clamp weights if necessary -- why sum / length? Faster than mean.
+    # 1e-4: floating point tolerance; prevents spurious clamp on weights that
+    # are marginally above max_weight due to floating point arithmetic
     clamp_offset = 1e-4
     if(max(weights) > max_weight + clamp_offset) {
       if(verbose > 1) message("  Clamping weights.")

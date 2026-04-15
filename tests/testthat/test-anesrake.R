@@ -25,5 +25,9 @@ test_that("anesrake passthrough", {
   expect_equal(result2$weightvec, result4$weightvec)
   expect_error(anesrake(ns_target, respondent_data, filter = rep(1, 20)))
 
+  # Regression: type = "nlim" used to fail with "requires the following parameter(s): count"
+  expect_no_error(
+    anesrake(ns_target, respondent_data, type = "nlim")
+  )
 
 })
