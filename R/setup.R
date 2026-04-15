@@ -1,4 +1,4 @@
-check_any_startup_issues = function(data, weights, convergence, ...) {
+check_any_startup_issues = function(data, target, convergence, ...) {
   if(any(!c("pct", "absolute") %in% names(convergence)) ||
      any(convergence[c("pct", "absolute")] < 0) ||
      any(convergence[c("pct", "absolute")] > 1)) {
@@ -86,7 +86,7 @@ check_any_data_issues = function(data, target, weights) {
   # Do any variables in the target weights not sum to 1?
   weight_sum_errors = lapply(names(target), function(variable) {
     sum_target = sum(target[[variable]])
-    if(all.equal(sum_target,1) ) {
+    if(isTRUE(all.equal(sum_target, 1))) {
       return(NULL)
     }
 
@@ -108,7 +108,7 @@ check_any_data_issues = function(data, target, weights) {
     }
     return(NULL)
   })
-  neg_weight_errors = paste0(unlist(neg_weight_errors)[1:10], collapse = "\n")
+  neg_weight_errors = paste0(head(unlist(neg_weight_errors), 10), collapse = "\n")
   if(nchar(neg_weight_errors) > 0) {
     stop("Errors detected in weight targets:\n", neg_weight_errors)
   }
@@ -176,13 +176,18 @@ get_error_function = function(error_function) {
   }
 
   # User didn't supply a closure
-  if(class(error_function) != "function" ||
-     typeof(error_function) != "closure") {
+  if(!is.function(error_function)) {
     stop("Error: Invalid option supplied for `error_function`. You must ",
          "supply either a function closure (the unquoted name of a function) ",
          "which takes two arguments and returns a number, or also a quoted ",
          "character string describing a built-in error function. The default ",
          "error function is 'linear'.")
+  }
+
+  # Primitive functions (e.g. sum) have no formals() but are variadic; accept
+  # them without arity inspection.
+  if(is.primitive(error_function)) {
+    return(error_function)
   }
 
   function_arguments = formals(error_function)
@@ -254,14 +259,19 @@ get_select_function = function(select_function, select_params) {
   }
 
   # User didn't supply a closure
-  if(class(select_function) != "function" ||
-     typeof(select_function) != "closure") {
+  if(!is.function(select_function)) {
     stop("Error: Invalid option supplied for `select_function`. You must ",
          "supply either a function closure (the unquoted name of a function) ",
          "which takes two arguments (a named vector of variable errors and a ",
          "named vector of parameters) and returns a subset of the first ",
          "argument, or a quoted character string describing a built-in ",
          "selection function. The default selection function is 'pct'.")
+  }
+
+  # Primitive functions (e.g. sum) have no formals() but are variadic; accept
+  # them without arity inspection.
+  if(is.primitive(select_function)) {
+    return(select_function)
   }
 
   function_arguments = formals(select_function)
@@ -326,7 +336,7 @@ name_weight_column = function(data, override = NULL) {
 #'   print.default() behaviour for named vectors.
 #' @keywords internal
 pretty_print_helper = function(named_vector) {
-  # Hwo long is the longest variable? What about the console output?
+  # How long is the longest variable? What about the console output?
   max_name_length = max(nchar(names(named_vector)))
   text_width = getOption("width")
 

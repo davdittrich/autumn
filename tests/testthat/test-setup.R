@@ -95,6 +95,16 @@ test_that("error conditions in check data issues", {
     error = function(e) conditionMessage(e)
   )
   expect_match(err_msg1, "Nonbinary")
+
+  # Regression: target not summing to 1 must give informative error, not
+  # "argument is not interpretable as logical" R internal error
+  t_bad_sum = ns_target
+  t_bad_sum[["gender"]][["Male"]] = 0.99  # gender now sums to ~1.49
+  err_msg2 = tryCatch(
+    check_any_data_issues(respondent_data, t_bad_sum, weights),
+    error = function(e) conditionMessage(e)
+  )
+  expect_match(err_msg2, "do not sum to 1")
 })
 
 test_that("generating start weights", {
@@ -212,6 +222,9 @@ test_that("error function switch", {
   # Too few arguments but it's a ...
   expect_equal(get_error_function(good_func_little),
                good_func_little)
+
+  # Regression: primitive functions must be accepted (typeof != "closure" was wrong guard)
+  expect_equal(get_error_function(sum), sum)
 })
 
 test_that("generating names for weight columns", {
@@ -292,4 +305,20 @@ test_that("get select functions", {
     good_func_small
   )
 
+  # Regression: primitive functions must be accepted
+  expect_equal(get_select_function(sum, list()), sum)
+
+})
+
+test_that("negative weight error message does not contain literal NA strings", {
+  weights = rep(1, nrow(respondent_data))
+  # Create a target with exactly one negative weight level
+  t_neg = ns_target
+  t_neg[["gender"]] = c("Male" = -0.2, "Female" = 1.2)
+  err_msg = tryCatch(
+    check_any_data_issues(respondent_data, t_neg, weights),
+    error = function(e) conditionMessage(e)
+  )
+  # Message must not contain literal "NA" from vector padding
+  expect_false(grepl("\\bNA\\b", err_msg))
 })
