@@ -4,28 +4,31 @@
 \alias{effective_sample_size}
 \title{Calculate effective sample size from weights}
 \usage{
-effective_sample_size(weights, outcome = NULL)
+effective_sample_size(weights, outcome = NULL, data = NULL, target = NULL)
 }
 \arguments{
-\item{weights}{The weights for which an implied effective sample size is
-designed}
+\item{weights}{A numeric vector of weights, or a data frame containing a
+weight column. See \code{\link{design_effect}} for details.}
 
-\item{outcome}{An vector outcome of interest. If NULL, this function
-returns the Kish (1992) estimator of design effects. If numeric data is
-provided, this function returns the Spencer (2000) estimator of design
-effects conditional on the correlation between supplied weights and the
-outcome of interest.}
+\item{outcome}{Optional. A numeric outcome vector. See
+\code{\link{design_effect}}.}
+
+\item{data}{Optional. The data frame supplied to \code{\link{harvest}}.
+See \code{\link{design_effect}}.}
+
+\item{target}{Optional. The target proportions list supplied to
+\code{\link{harvest}}. See \code{\link{design_effect}}.}
 }
 \value{
-A numeric effective sample size, which may be non-integer.
+A numeric effective sample size (may be non-integer).
 }
 \description{
-This function calculates the effective sample size implied by the
-supplied weights. Because weighting inflates variance of quantities of
-interest, the effective sample size of a weighted sample is less than the
-nominal sample size. This function calls \code{\link{design_effect}}. If an
-outcome is not provided, \code{\link{design_effect}} implements the
-estimator from Kish (1992), which assumes no correlation between weights
-and outcomes. If an outcome  is provided, the function implements Spencer
-(2000).
+Returns the effective sample size implied by the supplied weights. Because
+weighting inflates variance, the effective sample size of a weighted sample
+is less than the nominal sample size.
+}
+\references{
+Henry, K.A. & Valliant, R. (2015). A design effect measure for calibration
+  weighting in single-stage samples. \emph{Survey Methodology}, 41(2),
+  315--331.
 }
