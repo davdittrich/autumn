@@ -16,3 +16,5 @@
 ^\.github$
 ^\.git$
 ^src/$
+
+^bench$
