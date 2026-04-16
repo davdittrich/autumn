@@ -1,3 +1,11 @@
+# autumn (development)
+
+* `do_rake()` now uses bounded in-loop redistribution (water-filling) when
+  `max_weight` is finite. Per-cell calibration targets are now satisfied
+  simultaneously with the weight cap, fixing a correctness bug where the
+  previous post-hoc hard clamp left marginal proportions displaced from
+  targets.
+
 # autumn 0.2.0
 
 ## Breaking Changes

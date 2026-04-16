@@ -24,8 +24,11 @@ do_rake(
 
 \item{weights}{A numeric vector of current weights}
 
-\item{max_weight}{The maximum weight to clamp weights to after raking each
-variable}
+\item{max_weight}{The maximum weight to cap at. When finite, bounded
+redistribution is used within each IPF step so that per-cell calibration
+equations are satisfied simultaneously with the weight cap (water-filling).
+When \code{Inf} (no cap), standard multiplicative IPF is used. See
+\code{\link{single_adjust}} for the algorithm.}
 
 \item{max_iterations}{The maximum number of iterations of raking to perform
 before giving up. Please note that depending on the variable selection
@@ -35,15 +38,13 @@ variables after completing the iterations of this function call.}
 \item{convergence}{Convergence parameters as described in
 \code{\link{harvest}}.}
 
-\item{enforce_mean}{Default TRUE. By default, weights minimize divergence
-from target proportions subject to two conditions: that the mean weight
-be 1, and that the maximum weight be capped at \code{max_weight}. Weights
-are first capped and then re-meaned. When \code{enforce_mean} is FALSE,
-the re-meaning does not occur. This will guarantee the maximum weight
-does not exceed \code{max_weight} but may result in mean weights diverging
-from 1. As \code{max_weight} prevents high-weight observations from
-becoming higher weighted, \code{enforce_mean} helps low-weight observations
-from becoming even lower weighted.}
+\item{enforce_mean}{Default TRUE. In the IPF path (\code{method = "rake"}),
+bounded redistribution preserves the total weight sum exactly, so this
+parameter is a no-op — re-meaning after redistribution would displace
+calibrated proportions. In the Newton-Raphson path
+(\code{method = "nr"}), weights are still re-meaned after each clamp
+cycle. The parameter is retained in both function signatures for backward
+compatibility.}
 
 \item{accelerate}{Logical, default FALSE. If TRUE, replaces the standard
 Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan

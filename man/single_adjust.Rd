@@ -4,7 +4,7 @@
 \alias{single_adjust}
 \title{Adjust weights based on current imbalance of a single variable.}
 \usage{
-single_adjust(weights, target, var, cache)
+single_adjust(weights, target, var, cache, max_weight = Inf)
 }
 \arguments{
 \item{weights}{The current weights}
@@ -15,8 +15,12 @@ single_adjust(weights, target, var, cache)
 raking on.}
 
 \item{cache}{The pre_cache list from \code{do_rake}: each entry is a list
-with \code{x} (factor column), \code{idx} (integer level indices), and
-\code{na_rows} (NA + OOV row positions).}
+with \code{x} (factor column), \code{idx} (integer level indices),
+\code{na_rows} (NA + OOV row positions), and \code{cell_rows} (list of
+row-index vectors, one per target level).}
+
+\item{max_weight}{Scalar maximum weight. When finite, bounded redistribution
+is applied within each cell. Default \code{Inf} (unbounded).}
 }
 \value{
 A list with: \code{weights} (adjusted weight vector) and
@@ -25,12 +29,12 @@ A list with: \code{weights} (adjusted weight vector) and
 }
 \description{
 This function internally rakes the weights provided according to the
-current imbalance in a single variable. The mathematical process here is
-simple: for each level of the variable, multiply the weight by the target
-proportion divided by the current weighted proportion. For instance, if a
-\code{party} variable should be 0.4 Independent, 0.35 Democratic, and 0.25
-Republican, and the current weighted proportion is 0.4 Democratic, then the
-weights of every Democrat will be multiplied by 0.35 / 0.4. This is an
-internal function and not intended for end-users.
+current imbalance in a single variable. When \code{max_weight} is finite,
+bounded redistribution (water-filling) is used: rows that would exceed the
+cap are set to \code{max_weight} and the remaining mass is redistributed
+proportionally among uncapped rows in the same cell. This preserves the
+per-cell calibration equation \eqn{\sum w_i^{(k)} = t_k \cdot W} exactly
+for feasible cells (Deville-Sarndal truncated-linear distance). When
+\code{max_weight = Inf}, behaviour is identical to multiplicative IPF.
 }
 \keyword{internal}

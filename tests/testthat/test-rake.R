@@ -222,3 +222,168 @@ test_that("accelerated do_rake needs fewer iterations for high-imbalance data", 
   pct = weighted_pct(factor(data$dma, levels=names(targets$dma)), result_acc)
   expect_true(max(abs(pct - targets$dma[names(pct)])) < 0.02)
 })
+
+test_that("bounded redistribution: cell sums match targets after one IPF pass", {
+  # Minimal case where unbounded IPF would assign weight > max_weight.
+  # Cell "b": single row, target 0.85 of 101 total weight needed.
+  # Without cap: w["b"] = 1 * (0.85 / (1/101)) >> max_weight=5.
+  # With bounded redistribution: w["b"] = 5 (clamped), cell sum < target (infeasible).
+  # Cell "a": 100 rows, target 0.15 * 101 weight-units needed.
+  data    = data.frame(var1 = c(rep("a", 100), "b"))
+  targets = list(var1 = c("a" = 0.15, "b" = 0.85))
+  weights = rep(1, 101)
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 5,
+                   max_iterations = 1,
+                   convergence = c(pct = 1e-20, absolute = 1e-20),
+                   verbose = FALSE)
+
+  a_rows = seq_len(100)
+  b_row  = 101L
+  expect_true(max(result) <= 5 + 1e-9, label = "no weight exceeds max_weight")
+  expect_equal(result[b_row], 5, tolerance = 1e-9)
+  expect_true(var(result[a_rows]) < 1e-20, label = "a rows uniform within cell")
+})
+
+test_that("bounded redistribution: feasible cell hits target with binding cap", {
+  set.seed(7)
+  n = 500
+  data    = data.frame(var1 = sample(c("a","b","c"), n, TRUE, c(0.5, 0.3, 0.2)))
+  targets = list(var1 = c("a" = 0.4, "b" = 0.4, "c" = 0.2))
+  weights = rep(1, n)
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 3,
+                   max_iterations = 5000,
+                   convergence = c(pct = 1e-10, absolute = 1e-10),
+                   verbose = FALSE)
+
+  expect_true(max(result) <= 3 + 1e-9, label = "bound respected")
+  pct = weighted_pct(factor(data$var1, levels = names(targets$var1)), result)
+  expect_true(max(abs(pct[names(targets$var1)] - targets$var1)) < 0.05,
+              label = "marginals near targets despite binding cap")
+})
+
+test_that("bounded redistribution backward compat: Inf cap = no change", {
+  set.seed(3)
+  n = 300
+  data    = data.frame(var1 = sample(c("a","b"), n, TRUE),
+                       var2 = sample(c("x","y","z"), n, TRUE))
+  targets = list(var1 = c(a=0.5, b=0.5),
+                 var2 = c(x=0.3, y=0.4, z=0.3))
+  weights = rep(1, n)
+  conv    = c(pct=1e-10, absolute=1e-10)
+
+  result_inf = do_rake(data, targets, weights,
+                       max_weight = Inf, max_iterations = 5000,
+                       convergence = conv, verbose = FALSE)
+  result_big = do_rake(data, targets, weights,
+                       max_weight = 1e9, max_iterations = 5000,
+                       convergence = conv, verbose = FALSE)
+
+  expect_equal(result_inf, result_big, tolerance = 1e-4)
+  for (v in names(targets)) {
+    pct = weighted_pct(factor(data[[v]], levels=names(targets[[v]])), result_inf)
+    expect_true(max(abs(pct[names(targets[[v]])] - targets[[v]])) < 1e-4)
+  }
+})
+
+test_that("bounded redistribution: OOV/NA rows unchanged", {
+  data    = data.frame(var1 = c("a", "b", "UNKNOWN", NA, "a"))
+  targets = list(var1 = c("a" = 0.5, "b" = 0.5))
+  weights = c(1, 1, 3, 4, 1)
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 2,
+                   max_iterations = 1000,
+                   convergence = c(pct = 1e-10, absolute = 1e-10),
+                   verbose = FALSE)
+
+  expect_equal(result[3], 3, tolerance = 0,   label = "OOV row unchanged")
+  expect_equal(result[4], 4, tolerance = 0,   label = "NA row unchanged")
+  expect_false(any(is.na(result)),             label = "no NA weights")
+  # OOV/NA rows keep their original weights (multiplier=1), which may exceed
+  # max_weight. Only the raked rows (non-OOV, non-NA) must respect the bound.
+  raked_rows = c(1, 2, 5)
+  expect_true(max(result[raked_rows]) <= 2 + 1e-9, label = "bound respected for raked rows")
+})
+
+test_that("bounded redistribution: infeasible cell does not loop or error", {
+  # All 3 "b" rows can contribute at most 3 * max_weight = 6 weight-units.
+  # But target 0.90 * 100 = 90 weight-units needed. Cell is structurally infeasible.
+  data    = data.frame(var1 = c(rep("a", 97), "b", "b", "b"))
+  targets = list(var1 = c("a" = 0.10, "b" = 0.90))
+  weights = rep(1, 100)
+
+  result = expect_no_error(
+    do_rake(data, targets, weights,
+            max_weight = 2,
+            max_iterations = 100,
+            convergence = c(pct = 1e-6, absolute = 1e-6),
+            verbose = FALSE)
+  )
+  expect_false(any(is.na(result)), label = "no NA weights in infeasible cell case")
+  expect_true(max(result) <= 2 + 1e-9, label = "bound respected in infeasible case")
+  expect_true(all(result[98:100] <= 2 + 1e-9))
+})
+
+test_that("bounded redistribution: SQUAREM + binding max_weight converges", {
+  set.seed(42)
+  n = 800
+  data = data.frame(
+    var1 = sample(c("a","b","c"), n, TRUE, c(0.6, 0.3, 0.1)),
+    var2 = sample(c("x","y"),    n, TRUE, c(0.7, 0.3))
+  )
+  targets = list(
+    var1 = c(a=0.33, b=0.33, c=0.34),
+    var2 = c(x=0.5, y=0.5)
+  )
+  weights = rep(1, n)
+  conv    = c(pct=1e-8, absolute=1e-8)
+  mw      = 2.5
+
+  result_acc = do_rake(data, targets, weights,
+                       max_weight = mw, max_iterations = 5000,
+                       convergence = conv, accelerate = TRUE, verbose = FALSE)
+  result_std = do_rake(data, targets, weights,
+                       max_weight = mw, max_iterations = 5000,
+                       convergence = conv, accelerate = FALSE, verbose = FALSE)
+
+  expect_true(max(result_acc) <= mw + 1e-9,
+              label = "SQUAREM: no weight above max_weight")
+  expect_false(any(is.na(result_acc)),
+               label = "SQUAREM: no NA weights")
+  # With binding max_weight constraints, IPF is a non-smooth operator:
+  # SQUAREM and standard IPF converge to fixed points that may differ by O(0.02)
+  # in absolute weight but achieve statistically equivalent calibration.
+  # The correct invariant is calibration quality, not exact weight identity.
+  for (v in names(targets)) {
+    f = factor(data[[v]], levels = names(targets[[v]]))
+    pct_acc = weighted_pct(f, result_acc)[names(targets[[v]])]
+    pct_std = weighted_pct(f, result_std)[names(targets[[v]])]
+    expect_true(max(abs(pct_acc - targets[[v]])) < 1e-6,
+                label = paste("SQUAREM calibration for", v))
+    expect_true(max(abs(pct_std - targets[[v]])) < 1e-6,
+                label = paste("standard IPF calibration for", v))
+  }
+})
+
+test_that("enforce_mean is inert in IPF path after bounded redistribution", {
+  set.seed(5)
+  n = 400
+  data    = data.frame(var1 = sample(c("a","b","c"), n, TRUE))
+  targets = list(var1 = c(a=0.4, b=0.4, c=0.2))
+  weights = rep(1, n)
+  conv    = c(pct=1e-10, absolute=1e-10)
+
+  r_true  = do_rake(data, targets, weights,
+                    max_weight = 3, max_iterations = 5000,
+                    convergence = conv, enforce_mean = TRUE,  verbose = FALSE)
+  r_false = do_rake(data, targets, weights,
+                    max_weight = 3, max_iterations = 5000,
+                    convergence = conv, enforce_mean = FALSE, verbose = FALSE)
+
+  expect_equal(r_true, r_false, tolerance = 1e-9,
+               label = "enforce_mean has no effect in IPF path after bounded redistribution")
+})

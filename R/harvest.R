@@ -268,15 +268,13 @@
 #'   \code{target_map = c("variable" = 1, "level" = 2, "proportion" = 3)}. The
 #'   values of this vector can be either numeric column indexes or quoted
 #'   character vectors of column names.
-#' @param enforce_mean Default TRUE. By default, weights minimize divergence
-#'   from target proportions subject to two conditions: that the mean weight
-#'   be 1, and that the maximum weight be capped at \code{max_weight}. Weights
-#'   are first capped and then re-meaned. When \code{enforce_mean} is FALSE,
-#'   the re-meaning does not occur. This will guarantee the maximum weight
-#'   does not exceed \code{max_weight} but may result in mean weights diverging
-#'   from 1. As \code{max_weight} prevents high-weight observations from
-#'   becoming higher weighted, \code{enforce_mean} helps low-weight observations
-#'   from becoming even lower weighted.
+#' @param enforce_mean Default TRUE. In the IPF path (\code{method = "rake"}),
+#'   bounded redistribution preserves the total weight sum exactly, so this
+#'   parameter is a no-op — re-meaning after redistribution would displace
+#'   calibrated proportions. In the Newton-Raphson path
+#'   (\code{method = "nr"}), weights are still re-meaned after each clamp
+#'   cycle. The parameter is retained in both function signatures for backward
+#'   compatibility.
 #' @param accelerate Logical, default FALSE. If TRUE, replaces the standard
 #'   Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan
 #'   and Roland 2008), using Cauchy-Barzilai-Borwein extrapolation steps.

@@ -1,52 +1,91 @@
 #' Adjust weights based on current imbalance of a single variable.
 #'
 #' This function internally rakes the weights provided according to the
-#' current imbalance in a single variable. The mathematical process here is
-#' simple: for each level of the variable, multiply the weight by the target
-#' proportion divided by the current weighted proportion. For instance, if a
-#' \code{party} variable should be 0.4 Independent, 0.35 Democratic, and 0.25
-#' Republican, and the current weighted proportion is 0.4 Democratic, then the
-#' weights of every Democrat will be multiplied by 0.35 / 0.4. This is an
-#' internal function and not intended for end-users.
+#' current imbalance in a single variable. When \code{max_weight} is finite,
+#' bounded redistribution (water-filling) is used: rows that would exceed the
+#' cap are set to \code{max_weight} and the remaining mass is redistributed
+#' proportionally among uncapped rows in the same cell. This preserves the
+#' per-cell calibration equation \eqn{\sum w_i^{(k)} = t_k \cdot W} exactly
+#' for feasible cells (Deville-Sarndal truncated-linear distance). When
+#' \code{max_weight = Inf}, behaviour is identical to multiplicative IPF.
 #'
 #' @param weights The current weights
 #' @param target The target proportions, specified as in \code{\link{harvest}}
 #' @param var A quoted character vector containing the variable we are currently
 #'   raking on.
 #' @param cache The pre_cache list from \code{do_rake}: each entry is a list
-#'   with \code{x} (factor column), \code{idx} (integer level indices), and
-#'   \code{na_rows} (NA + OOV row positions).
+#'   with \code{x} (factor column), \code{idx} (integer level indices),
+#'   \code{na_rows} (NA + OOV row positions), and \code{cell_rows} (list of
+#'   row-index vectors, one per target level).
+#' @param max_weight Scalar maximum weight. When finite, bounded redistribution
+#'   is applied within each cell. Default \code{Inf} (unbounded).
 #' @return A list with: \code{weights} (adjusted weight vector) and
 #'   \code{max_dev} (max relative deviation of current from target before
 #'   adjustment — used by \code{do_rake} for adaptive variable ordering).
 #' @keywords internal
-single_adjust = function(weights, target, var, cache) {
-  # Get the current weight balance in the population.
-  # cache[[var]]$x is a pre-converted factor — rowsum() uses integer codes
-  # instead of per-call string hashing (see bench/results.md for measured speedup).
+single_adjust = function(weights, target, var, cache, max_weight = Inf) {
   current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
 
   # max_dev: scalar imbalance measure before this adjustment.
-  # Used by do_rake() for adaptive variable ordering.
-  # max(|target/current - 1|) = max relative deviation from target.
   max_dev = max(abs(target[[var]] / current - 1), na.rm = TRUE)
 
-  # Multiply each row's weight by target / current for its category.
-  # cache[[var]]$idx: integer level index for each row (from as.integer(factor)).
-  # NA and OOV rows have idx = NA_integer_, so mult[NA] = NA.
-  mult = unname(target[[var]] / current)[cache[[var]]$idx]
+  if (!is.finite(max_weight)) {
+    # ── Unbounded path: original vectorised IPF ──────────────────────────────
+    mult = unname(target[[var]] / current)[cache[[var]]$idx]
+    mult[cache[[var]]$na_rows] = 1
+    return(list(weights = weights * mult, max_dev = max_dev))
+  }
 
-  # NA and OOV rows get multiplier 1 (weight unchanged).
-  # Covers: actual NA in data AND out-of-vocabulary values absent from target.
-  mult[cache[[var]]$na_rows] = 1
+  # ── Bounded path: water-filling redistribution per cell ───────────────────
+  # For each cell k: target weight-sum T_k = target[k] * W (W = total weight,
+  # denominator used by weighted_pct). Rows that would exceed max_weight are
+  # clamped at max_weight; remaining target is redistributed proportionally to
+  # unclamped rows. Iteration converges in ≤ K steps (one row clamped per step).
+  #
+  # Properties guaranteed:
+  #   sum(new_w[cell_k]) = T_k  for feasible cells (T_k <= n_k * max_weight)
+  #   new_w[i] <= max_weight    for all i in defined cells
+  #   new_w[na_rows] unchanged  (OOV and NA rows not in any cell_rows[[k]])
+  W     = sum(weights)
+  new_w = weights   # copy; updated per cell; na_rows left at original values
 
-  # max_dev is pre-adjustment: reflects the imbalance that *caused* the ordering
-  # decision for this variable, not the post-correction state. Zero-count levels
-  # produce Inf (non-zero target / 0 current) — Inf is correct (variable maximally
-  # off-target) and safe (those categories have no rows so no weight becomes Inf).
-  # 0/0 levels produce NaN (dropped by na.rm=TRUE, equivalent to a 0 contribution
-  # since they are at target). Both cases handled correctly.
-  list(weights = weights * mult, max_dev = max_dev)
+  K = length(target[[var]])
+  for (k in seq_len(K)) {
+    cell_idx = cache[[var]]$cell_rows[[k]]
+    if (length(cell_idx) == 0L) next
+
+    T_k          = target[[var]][k] * W   # target weight-sum for this cell
+    cell_w       = weights[cell_idx]      # ORIGINAL weights (not new_w) — ensures
+                                          # all cells share the same pre-adjustment
+                                          # baseline (simultaneous update semantics)
+    free_local   = seq_along(cell_w)      # local indices into cell_w
+    clamped_mass = 0                      # weight already assigned to clamped rows
+
+    for (.iter in seq_len(length(cell_w) + 1L)) {
+      S_free = sum(cell_w[free_local])
+      if (S_free <= .Machine$double.eps) break    # no free weight remains
+      T_free = T_k - clamped_mass
+      if (T_free <= 0) break                      # all mass accounted for
+      m = T_free / S_free
+      if (m <= 0) break
+
+      newly_clamped = free_local[cell_w[free_local] * m > max_weight]
+      if (length(newly_clamped) == 0L) {
+        # No new clamps — apply uniform multiplier m to all free rows
+        cell_w[free_local] = cell_w[free_local] * m
+        break
+      }
+      # Clamp newly-clamped rows and update accounting
+      cell_w[newly_clamped] = max_weight
+      clamped_mass          = clamped_mass + length(newly_clamped) * max_weight
+      free_local            = free_local[!(free_local %in% newly_clamped)]
+      if (length(free_local) == 0L) break   # all rows clamped — infeasible cell
+    }
+
+    new_w[cell_idx] = cell_w
+  }
+
+  list(weights = new_w, max_dev = max_dev)
 }
 
 #' Clamp weights to a maximum weight
@@ -71,8 +110,11 @@ clamp_weights_top = function(weights, clamp) {
 #' @param data The data frame (tibble) or matrix containing the original data
 #' @param target The target proportions, specified as in \code{\link{harvest}}
 #' @param weights A numeric vector of current weights
-#' @param max_weight The maximum weight to clamp weights to after raking each
-#'   variable
+#' @param max_weight The maximum weight to cap at. When finite, bounded
+#'   redistribution is used within each IPF step so that per-cell calibration
+#'   equations are satisfied simultaneously with the weight cap (water-filling).
+#'   When \code{Inf} (no cap), standard multiplicative IPF is used. See
+#'   \code{\link{single_adjust}} for the algorithm.
 #' @param max_iterations The maximum number of iterations of raking to perform
 #'   before giving up. Please note that depending on the variable selection
 #'   method, \code{\link{harvest}} may continue iterative raking on new
@@ -127,10 +169,16 @@ do_rake = function(data, target, weights,
     # fixes autumn-7m3 (OOV rows previously produced NA mult -> NA weights).
     f = factor(data[[variable]], levels = names(target[[variable]]))
     codes = as.integer(f)
+    K     = length(levels(f))
     list(
-      x       = f,                      # factor column — fast rowsum
-      idx     = codes,                  # integer indices into target[[variable]]
-      na_rows = which(is.na(codes))     # NA + OOV rows get multiplier 1
+      x         = f,                      # factor column — fast rowsum
+      idx       = codes,                  # integer indices into target[[variable]]
+      na_rows   = which(is.na(codes)),    # NA + OOV rows get multiplier 1
+      # cell_rows[[k]]: integer vector of row positions belonging to level k.
+      # Built once; used by bounded redistribution in single_adjust() when
+      # max_weight is finite. O(N*K) total but K<=100 in practice; negligible
+      # vs per-iteration cost.
+      cell_rows = lapply(seq_len(K), function(k) which(codes == k))
     )
   })
   names(pre_cache) = names(target)
@@ -140,19 +188,16 @@ do_rake = function(data, target, weights,
   one_pass = function(w) {
     for(j in rake_order) {
       if(verbose > 2) message("  Raking variable: ", j)
-      result     = single_adjust(w, target, j, pre_cache)
+      result     = single_adjust(w, target, j, pre_cache, max_weight)
       w          = result$weights
-      var_dev[j] <<- result$max_dev   # update parent-env var_dev for ordering
+      var_dev[j] <<- result$max_dev
     }
     if(adaptive_order) rake_order <<- names(target)[order(var_dev, decreasing = TRUE)]
-    # Clamp weights if necessary.
-    # 1e-4: floating point tolerance; prevents spurious clamp on weights that
-    # are marginally above max_weight due to floating point arithmetic.
-    if(max(w) > max_weight + 1e-4) {
-      if(verbose > 1) message("  Clamping weights.")
-      w = clamp_weights_top(w, max_weight)
-      if(enforce_mean) w = w / (sum(w) / length(w))
-    }
+    # Bounded redistribution inside single_adjust() now enforces max_weight during
+    # the IPF step, making the mid-iteration pmin() clamp + enforce_mean rescale
+    # redundant. When max_weight = Inf the clamp was already a no-op (condition
+    # max(w) > Inf never fires). Removing the block prevents the enforce_mean
+    # rescaling from pushing weights back above max_weight after redistribution.
     w
   }
 
@@ -325,14 +370,12 @@ do_rake = function(data, target, weights,
             if(!is.na(weight_update_old)) paste0(" / ", weight_update_old) else "")
   }
 
-  # Hard clamp: guarantee max_weight is strictly respected on return.
-  # one_pass() clamps mid-iteration, but when enforce_mean = TRUE the
-  # re-scaling to mean = 1 can push weights back above max_weight on the
-  # final pass. This mirrors the final hard clamp already present in the
-  # NR path (harvest.R:414-416). clamp_weights_top is pmin() — idempotent
-  # and O(n); no guard needed.
-  weights = clamp_weights_top(weights, max_weight)
-
-  # Return weights
+  # Return weights.
+  # NOTE: no final clamp here. Bounded redistribution inside single_adjust()
+  # enforces max_weight for all defined-cell rows during each IPF step.
+  # OOV and NA rows are never inside any cell_rows[[k]] and must not be
+  # clamped — pmin() is blind to row membership and would incorrectly cap them.
+  # The old hard clamp + enforce_mean rescale have both been removed; neither
+  # is needed and both cause incorrect results when max_weight is finite.
   weights
 }
