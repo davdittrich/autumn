@@ -33,7 +33,29 @@ test_that("single variable rake works", {
                 convergence = c("pct" = 1e-6, "absolute" = 1e-6),
                 enforce_mean = TRUE,
                 verbose = 3)
-  expect_equal(mean(res2), 1)
+  # After fix: max_weight is strictly enforced; mean deviates from 1 when
+  # clamping is structurally binding (enforce_mean cannot re-mean past max_weight).
+  expect_true(max(res2) <= 5 + 1e-4,
+              label = "max weight respected with enforce_mean = TRUE")
+})
+
+test_that("do_rake IPF path strictly respects max_weight", {
+  # Regression test: enforce_mean re-scaling inside one_pass() was pushing
+  # the "b" weight from 5 (clamped) to ~25 (re-meaned past max_weight).
+  # The hard clamp added after the loop must prevent this.
+  data    = data.frame(var1 = c(rep("a", 100), "b"))
+  targets = list(var1 = c("a" = 0.15, "b" = 0.85))
+  weights = rep(1, 101)
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 5,
+                   max_iterations = 1000,
+                   convergence = c(pct = 1e-6, absolute = 1e-6),
+                   enforce_mean = TRUE,
+                   verbose = FALSE)
+
+  expect_true(max(result) <= 5 + 1e-4,
+              label = "IPF path must not return weights above max_weight")
 })
 
 test_that("testing fast convergence, timeout, regular convergence", {
