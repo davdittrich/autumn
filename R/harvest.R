@@ -290,15 +290,15 @@
 #'   \code{"rake"} uses the standard iterative proportional fitting (IPF)
 #'   algorithm. \code{"nr"} uses a Newton-Raphson calibration solver that
 #'   converges in 10--20 iterations regardless of imbalance severity, versus
-#'   100--500 for IPF on severely skewed data (benchmarked ~1.7x faster at
-#'   \code{n = 200,000}).
+#'   100--500 for IPF on severely skewed data (typically much faster for
+#'   large n or severely imbalanced data).
 #'
 #'   \strong{Important:} When \code{max_weight} is binding (which it is under
 #'   the default \code{max_weight = 5} for most survey data), \code{method =
 #'   "nr"} produces \emph{different weights} from \code{method = "rake"}
 #'   because the two methods apply the \code{max_weight} constraint at
 #'   different points in iteration. Marginal proportions match within
-#'   tolerance; individual weights can differ by up to 30\%. Switching the
+#'   tolerance; individual weights can differ substantially. Switching the
 #'   default would be a breaking change for existing analyses, so
 #'   \code{"rake"} remains the default. Use \code{"nr"} explicitly when speed
 #'   matters more than weight continuity with prior runs.
