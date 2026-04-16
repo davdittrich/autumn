@@ -111,7 +111,7 @@ do_rake = function(data, target, weights,
   names(pre_cache) = names(target)
 
   # We're going to rake for a maximum number of iterations
-  for(i in 1:max_iterations) {
+  for(i in seq_len(max_iterations)) {
     # Let the user know we're starting the iteration, and if it's not the first,
     # how much the weights changed since last time.
     if(verbose > 1) {

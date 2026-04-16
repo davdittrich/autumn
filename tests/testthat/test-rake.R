@@ -1,5 +1,3 @@
-context("test-rake")
-
 test_that("single variable rake works", {
   data = data.frame("var1" = c(rep("a", 3), "b"))
   targets = list("var1" = c("a" = 0.875, "b" = 0.125))
