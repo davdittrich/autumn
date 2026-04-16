@@ -74,3 +74,27 @@ test_that("NA rows in raking variable get weight multiplier 1", {
   expect_true(abs((result[1] + result[4]) / non_na_sum - 0.5) < 0.01)
   expect_true(abs(result[2] / non_na_sum - 0.5) < 0.01)
 })
+
+test_that("OOV values in raking variable get weight multiplier 1", {
+  # Out-of-vocabulary values (not in target) must not corrupt weights.
+  # autumn-7m3: previously these produced NA in mult, propagating NA weights.
+  data    = data.frame(var1 = c("a", "b", "UNKNOWN", "a"))
+  targets = list(var1 = c("a" = 0.5, "b" = 0.5))
+  weights = c(1, 1, 2, 1)   # OOV row has weight 2
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 10,
+                   max_iterations = 100,
+                   convergence = c(pct = 1e-6, absolute = 1e-6),
+                   verbose = FALSE)
+
+  # OOV row weight must be unchanged (was NA before fix, now 1x multiplier)
+  expect_equal(result[3], 2)
+  # No NA weights
+  expect_false(any(is.na(result)))
+
+  # Weighted proportions of "a" and "b" must match targets (0.5 / 0.5)
+  non_oov_sum = result[1] + result[2] + result[4]
+  expect_true(abs((result[1] + result[4]) / non_oov_sum - 0.5) < 0.01)
+  expect_true(abs(result[2] / non_oov_sum - 0.5) < 0.01)
+})

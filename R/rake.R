@@ -9,31 +9,28 @@
 #' weights of every Democrat will be multiplied by 0.35 / 0.4. This is an
 #' internal function and not intended for end-users.
 #'
-#' @param data The data frame (tibble) or matrix which contains the original
-#'   data.
 #' @param weights The current weights
 #' @param target The target proportions, specified as in \code{\link{harvest}}
 #' @param var A quoted character vector containing the variable we are currently
 #'   raking on.
-#' @param cache A list of integer vectors mapping rows of the data frame to
-#'   levels of the target variable
+#' @param cache The pre_cache list from \code{do_rake}: each entry is a list
+#'   with \code{x} (factor column), \code{idx} (integer level indices), and
+#'   \code{na_rows} (NA + OOV row positions).
 #' @return Adjusted weights, raked for this variable.
 #' @keywords internal
-single_adjust = function(data, weights, target, var, cache) {
-  # First, get the current weight balance in the population
-  current = weighted_pct(data[[var]], weights)[names(target[[var]])]
+single_adjust = function(weights, target, var, cache) {
+  # Get the current weight balance in the population.
+  # cache[[var]]$x is a pre-converted factor — rowsum() uses integer codes
+  # instead of string hashing, 10-50x faster at large n.
+  current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
 
   # Multiply each row's weight by target / current for its category.
-  # cache[[var]]$idx: integer index mapping each row to its target level.
-  # NA rows have idx = NA, so mult[NA] = NA; overwrite those with 1 below.
+  # cache[[var]]$idx: integer level index for each row (from as.integer(factor)).
+  # NA and OOV rows have idx = NA_integer_, so mult[NA] = NA.
   mult = unname(target[[var]] / current)[cache[[var]]$idx]
 
-  # NA rows get multiplier 1 (their weight is unchanged).
-  # na_rows covers rows where data[[var]] is NA. Note: out-of-vocabulary values
-  # (present in data but absent from target) also produce NA in idx and would
-  # also get mult=NA; this is a separate pre-existing gap (autumn-7m3).
-  # na_rows was pre-cached once in do_rake() — the is.na() scan is not
-  # repeated here on every call.
+  # NA and OOV rows get multiplier 1 (weight unchanged).
+  # Covers: actual NA in data AND out-of-vocabulary values absent from target.
   mult[cache[[var]]$na_rows] = 1
 
   # Return the new weights, not just the multipliers
@@ -94,9 +91,21 @@ do_rake = function(data, target, weights,
   # is only fast if the columns of the data frame are all factors. We can
   # avoid paying this cost by pre-caching it across all iterations.
   pre_cache = lapply(names(target), function(variable) {
+    # Convert to factor once: one O(n) string scan at pre-cache time.
+    # All subsequent per-iteration lookups use integer codes — O(1) per
+    # element vs O(n) string hashing on every call. Levels order matches
+    # names(target[[variable]]) exactly, so as.integer(f) gives the same
+    # index as match(data[[variable]], names(target[[variable]])) but via
+    # integer comparison rather than string comparison.
+    # OOV values (valid strings not in target) become NA_integer_ in the
+    # factor codes, so which(is.na(codes)) captures both NA and OOV rows —
+    # fixes autumn-7m3 (OOV rows previously produced NA mult -> NA weights).
+    f = factor(data[[variable]], levels = names(target[[variable]]))
+    codes = as.integer(f)
     list(
-      idx     = match(data[[variable]], names(target[[variable]])),
-      na_rows = which(is.na(data[[variable]]))
+      x       = f,                      # factor column — fast rowsum
+      idx     = codes,                  # integer indices into target[[variable]]
+      na_rows = which(is.na(codes))     # NA + OOV rows get multiplier 1
     )
   })
   names(pre_cache) = names(target)
@@ -118,7 +127,7 @@ do_rake = function(data, target, weights,
     # Rake each variable one at a time.
     for(j in names(target)) {
       if(verbose > 2) message("  Raking variable: ", j)
-      weights = single_adjust(data, weights, target, j, pre_cache)
+      weights = single_adjust(weights, target, j, pre_cache)
     }
 
     # Clamp weights if necessary -- why sum / length? Faster than mean.
