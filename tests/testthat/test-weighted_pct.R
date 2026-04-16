@@ -46,3 +46,17 @@ test_that("factor x produces same result as character x", {
   expect_equal(weighted_pct(x_char, weights),
                weighted_pct(x_factor, weights))
 })
+
+test_that("factor x with non-alphabetical levels returns correct proportions by name", {
+  # Factor levels in reverse alpha order — rowsum may order differently than
+  # character input, but downstream code always subscripts by name, so values
+  # must match regardless of order.
+  x_char   = c("b", "a", "b", "a", "a")
+  x_factor = factor(x_char, levels = c("b", "a"))  # non-alphabetical
+  weights  = c(1, 2, 3, 4, 5)
+  res_char   = weighted_pct(x_char, weights)
+  res_factor = weighted_pct(x_factor, weights)
+  # Values must match by name, regardless of output order
+  expect_equal(res_char[["a"]], res_factor[["a"]])
+  expect_equal(res_char[["b"]], res_factor[["b"]])
+})

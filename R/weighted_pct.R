@@ -24,7 +24,13 @@ weighted_pct = function(x, weights) {
   #   are ALWAYS treated as a separate level by rowsum() regardless of na.rm
   #   (R docs: "NA values in group are always treated as a separate level,
   #   independent of na.rm"). Strip the NA-named row explicitly below.
-  rs = suppressWarnings(rowsum(weights, x, na.rm = TRUE))
+  rs = withCallingHandlers(
+    rowsum(weights, x, na.rm = TRUE),
+    warning = function(w) {
+      if (grepl("missing values for 'group'", conditionMessage(w), fixed = TRUE))
+        invokeRestart("muffleWarning")
+    }
+  )
   # Strip the NA group row: rowsum() creates a row with NA_character_ rowname
   # for NA group labels. This matches split()'s behavior (NA-keyed elements
   # excluded). The denominator still includes NA-x row weights (intentional:
