@@ -29,10 +29,15 @@ test_that("nr_calibrate matches do_rake solution for 2-variable problem", {
 })
 
 test_that("harvest method='nr' matches method='rake' on standard data", {
+  # Use max_weight=100 to avoid binding the cap: when max_weight is binding,
+  # IPF (bounded redistribution) and NR (clamp-and-recalibrate) are different
+  # algorithms that produce different-but-valid calibrated solutions. The test
+  # intent is to verify both methods reach the same fixed point under unconstrained
+  # raking; clamping behaviour is tested separately.
   result_rake = harvest(respondent_data, ns_target,
-                        attach_weights = FALSE)
+                        max_weight = 100, attach_weights = FALSE)
   result_nr   = harvest(respondent_data, ns_target,
-                        method = "nr", attach_weights = FALSE)
+                        max_weight = 100, method = "nr", attach_weights = FALSE)
 
   for(v in names(ns_target)) {
     pct_rake = weighted_pct(factor(respondent_data[[v]],
