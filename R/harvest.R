@@ -210,11 +210,10 @@
 #'   better initial weights may speed up convergence.
 #' @param max_weight A maximum value to clamp weights to. By default, as per
 #'   DeBell and Krosnick (2009) and \code{\link[anesrake]{anesrake}}, this is
-#'   set to 5. Note: When weights exceed \code{max_weight}, all weights are
-#'   truncated to \code{max_weight} and then re-distributed to have mean 1.
-#'   This means capped weights may sometimes exceed \code{max_weight} in order
-#'   to preserve weight mean = 1. To override this, see documentation for
-#'   \code{enforce_mean}
+#'   set to 5. Returned weights are guaranteed not to exceed \code{max_weight}
+#'   (within floating-point tolerance). When \code{enforce_mean = TRUE} and
+#'   clamping is structurally necessary, the mean weight may be slightly below
+#'   1. See \code{enforce_mean} for details.
 #' @param max_iterations A maximum number of iterations per raking attempt.
 #'   The default is 1,000. Note that the total number of iterations may exceed
 #'   this number if after raking, additional variables display imbalance.
@@ -278,6 +277,35 @@
 #'   from 1. As \code{max_weight} prevents high-weight observations from
 #'   becoming higher weighted, \code{enforce_mean} helps low-weight observations
 #'   from becoming even lower weighted.
+#' @param accelerate Logical, default FALSE. If TRUE, replaces the standard
+#'   Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan
+#'   and Roland 2008), using Cauchy-Barzilai-Borwein extrapolation steps.
+#'   \strong{Experimental.} Under default \code{harvest()} convergence settings
+#'   (where the \code{pct} criterion typically fires after a small number of
+#'   iterations), SQUAREM is \emph{slower} than standard IPF because each
+#'   super-step costs three rake passes rather than one. SQUAREM may help
+#'   only when the \code{pct} criterion is disabled and convergence requires
+#'   hundreds of iterations. Most users should leave this at the default FALSE.
+#' @param method Character, one of \code{"rake"} (default) or \code{"nr"}.
+#'   \code{"rake"} uses the standard iterative proportional fitting (IPF)
+#'   algorithm. \code{"nr"} uses a Newton-Raphson calibration solver that
+#'   converges in 10--20 iterations regardless of imbalance severity, versus
+#'   100--500 for IPF on severely skewed data (benchmarked ~1.7x faster at
+#'   \code{n = 200,000}).
+#'
+#'   \strong{Important:} When \code{max_weight} is binding (which it is under
+#'   the default \code{max_weight = 5} for most survey data), \code{method =
+#'   "nr"} produces \emph{different weights} from \code{method = "rake"}
+#'   because the two methods apply the \code{max_weight} constraint at
+#'   different points in iteration. Marginal proportions match within
+#'   tolerance; individual weights can differ by up to 30\%. Switching the
+#'   default would be a breaking change for existing analyses, so
+#'   \code{"rake"} remains the default. Use \code{"nr"} explicitly when speed
+#'   matters more than weight continuity with prior runs.
+#'
+#'   When \code{method = "nr"} and \code{select_function} is not the default
+#'   \code{"pct"}, a warning is emitted because NR calibrates all variables
+#'   simultaneously and cannot honour variable-selection logic.
 #' @param ... Additional arguments to this function are ignored
 #' @return The original data frame \code{data} augmented with a new column
 #'   containing the calculated weights if \code{attach_weights} is TRUE

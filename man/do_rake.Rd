@@ -45,6 +45,16 @@ from 1. As \code{max_weight} prevents high-weight observations from
 becoming higher weighted, \code{enforce_mean} helps low-weight observations
 from becoming even lower weighted.}
 
+\item{accelerate}{Logical, default FALSE. If TRUE, replaces the standard
+Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan
+and Roland 2008), using Cauchy-Barzilai-Borwein extrapolation steps.
+\strong{Experimental.} Under default \code{harvest()} convergence settings
+(where the \code{pct} criterion typically fires after a small number of
+iterations), SQUAREM is \emph{slower} than standard IPF because each
+super-step costs three rake passes rather than one. SQUAREM may help
+only when the \code{pct} criterion is disabled and convergence requires
+hundreds of iterations. Most users should leave this at the default FALSE.}
+
 \item{verbose}{Level of verbosity, defaults to FALSE. At TRUE or 1, the
 function begins emitting progress information during major events. At 2,
 each iteration provides progress information.}
