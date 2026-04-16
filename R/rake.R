@@ -40,7 +40,12 @@ single_adjust = function(weights, target, var, cache) {
   # Covers: actual NA in data AND out-of-vocabulary values absent from target.
   mult[cache[[var]]$na_rows] = 1
 
-  # Return both the new weights and the pre-adjustment max deviation.
+  # max_dev is pre-adjustment: reflects the imbalance that *caused* the ordering
+  # decision for this variable, not the post-correction state. Zero-count levels
+  # produce Inf (non-zero target / 0 current) — Inf is correct (variable maximally
+  # off-target) and safe (those categories have no rows so no weight becomes Inf).
+  # 0/0 levels produce NaN (dropped by na.rm=TRUE, equivalent to a 0 contribution
+  # since they are at target). Both cases handled correctly.
   list(weights = weights * mult, max_dev = max_dev)
 }
 

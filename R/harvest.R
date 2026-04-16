@@ -403,7 +403,7 @@ harvest = function(
   # Per DeBell and Krosnick, the past raking may have messed up variables which
   # were previously fine. We'll keep chasing that rabbit if need be.
   done = 0
-  for(i in 1:9) {
+  for(i in seq_len(9)) {
     if("time" %in% names(convergence) &&
        !is.null(convergence[["time"]]) &&
        (difftime(Sys.time(), base_time, units = "secs") >
