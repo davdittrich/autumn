@@ -335,6 +335,7 @@ harvest = function(
   enforce_mean = TRUE,
   adaptive_order = FALSE,
   accelerate = FALSE,
+  method = "rake",
   ...
 ) {
   # Capture caller's symbol BEFORE any reassignment of `target`
@@ -342,6 +343,16 @@ harvest = function(
 
   # Check if user supplied any weird arguments
   check_any_startup_issues(data, target, convergence, ...)
+
+  # Validate method.
+  method = match.arg(method, c("rake", "nr"))
+  if(method == "nr" && !identical(select_function, "pct")) {
+    # Guard uses the raw user-supplied value BEFORE get_select_function() converts
+    # the default "pct" string to a function object. identical("pct","pct") is TRUE
+    # so the default causes no warning. Fires when user passes a custom function.
+    warning("method='nr' calibrates all variables simultaneously; ",
+            "select_function is ignored.")
+  }
 
   # Set up initial weights centered at weight 1
   # sum / length is about twice as fast as mean.
@@ -380,6 +391,45 @@ harvest = function(
 
   # Basic error checking in the data
   check_any_data_issues(data, target, weights)
+
+  # NR calibration bypass: skip variable selection and IPF entirely.
+  if(method == "nr") {
+    weights = nr_calibrate(data, target, weights,
+                           max_iter = max_iterations,
+                           tol = 1e-8,
+                           verbose = isTRUE(verbose > 0))
+    # Post-NR clamping loop: clamp and re-calibrate up to 5 times to restore
+    # marginal constraints after clamping, then apply a final hard clamp.
+    for(.clamp_pass in seq_len(5)) {
+      if(max(weights) <= max_weight + 1e-4) break
+      weights = clamp_weights_top(weights, max_weight)
+      if(enforce_mean) weights = weights / (sum(weights) / length(weights))
+      weights = nr_calibrate(data, target, weights,
+                             max_iter = 20, tol = 1e-8, verbose = FALSE)
+    }
+    # Hard clamp: guarantee max_weight is respected regardless of NR overshoot.
+    # Skip enforce_mean here — re-meaning after this point would push weights
+    # above max_weight again when the dataset structurally requires weights > max_weight
+    # to satisfy marginals.
+    if(max(weights) > max_weight + 1e-4) {
+      weights = clamp_weights_top(weights, max_weight)
+    }
+    if(!is.null(weight_column) && !attach_weights) {
+      message("Note: 'weight_column' specified even though ",
+              "'attach_weights=FALSE'. Weights being returned as vector rather ",
+              "than attached to data.")
+    }
+    if(!attach_weights) {
+      return(weights)
+    }
+    if(!is.null(data_original)) {
+      data = data_original
+    }
+    new_column_name = name_weight_column(data, weight_column)
+    data[[new_column_name]] = weights
+    attr(data, "target_symbol") = target_symbol
+    return(data)
+  }
 
   # Which variables are we going to rake on?
   which_rake = variable_selection(data, target, weights,
