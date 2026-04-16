@@ -20,6 +20,9 @@ harvest(
   add_na_proportion = FALSE,
   target_map = NULL,
   enforce_mean = TRUE,
+  adaptive_order = FALSE,
+  accelerate = FALSE,
+  method = "rake",
   ...
 )
 }
@@ -104,7 +107,8 @@ proportions so that each variable has a proportion for missing data
 reflecting the missing data observed in the \code{data} sample. If a
 character vector, \code{harvest} will adjust the variables in the
 character vector but no others. If a numeric vector, \code{harvest} will
-adjust the variables based on num}
+adjust the variables based on numeric position in the original data, adding
+a proportion for the observed missing rate in each such variable.}
 
 \item{target_map}{Used only if \code{target} is a data frame, provides a
 mapping from columns of the data frame to \code{variable}, \code{level},

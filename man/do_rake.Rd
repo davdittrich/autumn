@@ -12,6 +12,8 @@ do_rake(
   max_iterations,
   convergence,
   enforce_mean = TRUE,
+  adaptive_order = FALSE,
+  accelerate = FALSE,
   verbose
 )
 }
