@@ -84,8 +84,8 @@ test_that("nr_calibrate handles OOV and NA rows", {
 
   result = nr_calibrate(data, targets, weights, max_iter=50, tol=1e-8)
 
-  expect_equal(result[3], 2)
-  expect_equal(result[4], 3)
+  expect_equal(result[3], 2, tolerance = 0)   # OOV row: weight must be exactly unchanged
+  expect_equal(result[4], 3, tolerance = 0)   # NA row: weight must be exactly unchanged
   expect_false(any(is.na(result)))
 
   valid = c(1, 2, 5)

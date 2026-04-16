@@ -11,8 +11,9 @@
 #' @param initial_weights A numeric vector of starting weights. Defaults to 1
 #'   for each row (unit weights).
 #' @param max_iter Maximum number of Newton-Raphson iterations.
-#' @param tol Convergence tolerance: stop when \code{max(|g|) < tol * n} where
-#'   g is the gradient (difference between weighted counts and target counts).
+#' @param tol Convergence tolerance: stop when \code{max(|g|) < tol * total_d}
+#'   where g is the gradient (weighted count minus target count) and
+#'   \code{total_d = sum(initial_weights)}.
 #' @param verbose Logical. If TRUE, print per-iteration convergence information.
 #' @return A numeric vector of calibrated weights.
 #' @keywords internal
@@ -47,7 +48,10 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
 
   for(iter in seq_len(max_iter)) {
 
-    # --- Gradient ---
+    # --- Gradient (tapply cached for Hessian diagonal reuse) ---
+    # wt_sums_list caches per-variable weighted counts so the Hessian diagonal
+    # loop below can read them without a second tapply call per variable.
+    wt_sums_list = vector("list", V)
     g = numeric(K)
     for(i_v in seq_len(V)) {
       v   = vars[i_v]
@@ -55,6 +59,7 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
       wt_sums = tapply(w, cache[[v]]$x, sum)
       wt_sums = wt_sums[names(target[[v]])]
       wt_sums[is.na(wt_sums)] = 0
+      wt_sums_list[[i_v]] = wt_sums   # reused below for Hessian diagonal
       g[off + seq_len(K_v[i_v])] = wt_sums - T_k[off + seq_len(K_v[i_v])]
     }
 
@@ -65,18 +70,13 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
     # --- Hessian (K x K sparse, block-structured) ---
     H_i = integer(0); H_j = integer(0); H_x = numeric(0)
 
-    wt_sums_list = vector("list", V)
+    # Diagonal blocks: reuse cached wt_sums_list — no second tapply per variable.
     for(i_v in seq_len(V)) {
-      v   = vars[i_v]
-      off = offsets[i_v]
-      kv  = K_v[i_v]
-      wt_sums = tapply(w, cache[[v]]$x, sum)
-      wt_sums = wt_sums[names(target[[v]])]
-      wt_sums[is.na(wt_sums)] = 0
-      wt_sums_list[[i_v]] = wt_sums
+      off   = offsets[i_v]
+      kv    = K_v[i_v]
       idx_k = off + seq_len(kv)
       H_i = c(H_i, idx_k); H_j = c(H_j, idx_k)
-      H_x = c(H_x, as.numeric(wt_sums))
+      H_x = c(H_x, as.numeric(wt_sums_list[[i_v]]))
     }
 
     for(i_v in seq_len(V - 1L)) {
