@@ -329,10 +329,9 @@ do_rake = function(data, target, weights,
   # one_pass() clamps mid-iteration, but when enforce_mean = TRUE the
   # re-scaling to mean = 1 can push weights back above max_weight on the
   # final pass. This mirrors the final hard clamp already present in the
-  # NR path (harvest.R:414-416).
-  if(max(weights) > max_weight + 1e-4) {
-    weights = clamp_weights_top(weights, max_weight)
-  }
+  # NR path (harvest.R:414-416). clamp_weights_top is pmin() — idempotent
+  # and O(n); no guard needed.
+  weights = clamp_weights_top(weights, max_weight)
 
   # Return weights
   weights

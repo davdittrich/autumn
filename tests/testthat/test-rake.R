@@ -35,7 +35,7 @@ test_that("single variable rake works", {
                 verbose = 3)
   # After fix: max_weight is strictly enforced; mean deviates from 1 when
   # clamping is structurally binding (enforce_mean cannot re-mean past max_weight).
-  expect_true(max(res2) <= 5 + 1e-4,
+  expect_true(max(res2) <= 5,
               label = "max weight respected with enforce_mean = TRUE")
 })
 
@@ -54,7 +54,7 @@ test_that("do_rake IPF path strictly respects max_weight", {
                    enforce_mean = TRUE,
                    verbose = FALSE)
 
-  expect_true(max(result) <= 5 + 1e-4,
+  expect_true(max(result) <= 5,
               label = "IPF path must not return weights above max_weight")
 })
 
