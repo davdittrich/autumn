@@ -97,6 +97,11 @@ do_rake = function(data, target, weights,
   # Pocket algorithm: we want to start this with a very high value
   weight_update_sum = 1e9
 
+  # weight_update_old: previous-iteration update sum (pct convergence criterion).
+  # Updated each standard IPF iteration; never updated by SQUAREM (which omits pct).
+  # Initialized here so the partial-convergence warning never references an undefined var.
+  weight_update_old = NA_real_
+
   # Adaptive ordering state: rake_order is the variable sequence for each
   # iteration. var_dev tracks max relative deviation per variable from the
   # previous iteration and is used to reorder for the next.
@@ -304,7 +309,6 @@ do_rake = function(data, target, weights,
       # If user specified a timeout, timeout the raking process.
       if("time" %in% names(convergence) &&
          !is.null(convergence[["time"]]) &&
-         !is.null(convergence[["time"]]) &&
          (difftime(Sys.time(), base_time, units = "secs") > convergence[["time"]])) {
         break
       }
@@ -316,9 +320,9 @@ do_rake = function(data, target, weights,
   # overall length of the weights, since something with more observations
   # can have more updating with relatively speaking substantive impact.
   if(weight_update_sum > 0.001 * length(weights)) {
-    prev = if(exists("weight_update_old")) weight_update_old else NA_real_
     warning("Partial convergence only after ", i, " iterations: ",
-            weight_update_sum, " / ", prev)
+            weight_update_sum,
+            if(!is.na(weight_update_old)) paste0(" / ", weight_update_old) else "")
   }
 
   # Return weights
