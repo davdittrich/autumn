@@ -24,6 +24,9 @@
 #'   adjustment — used by \code{do_rake} for adaptive variable ordering).
 #' @keywords internal
 single_adjust = function(weights, target, var, cache, max_weight = Inf) {
+  # Precondition: all weights must be non-negative. SQUAREM's step-halving
+  # (harvest.R: pmax(w_star, .Machine$double.eps)) enforces this upstream;
+  # the water-filling loop below would silently mis-calibrate on negative inputs.
   current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
 
   # max_dev: scalar imbalance measure before this adjustment.
@@ -61,7 +64,7 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
     free_local   = seq_along(cell_w)      # local indices into cell_w
     clamped_mass = 0                      # weight already assigned to clamped rows
 
-    for (.iter in seq_len(length(cell_w) + 1L)) {
+    for (.iter in seq_len(length(cell_w) + 1L)) {  # +1L: one extra pass for the final uniform-m apply
       S_free = sum(cell_w[free_local])
       if (S_free <= .Machine$double.eps) break    # no free weight remains
       T_free = T_k - clamped_mass
@@ -78,7 +81,7 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
       # Clamp newly-clamped rows and update accounting
       cell_w[newly_clamped] = max_weight
       clamped_mass          = clamped_mass + length(newly_clamped) * max_weight
-      free_local            = free_local[!(free_local %in% newly_clamped)]
+      free_local            = setdiff(free_local, newly_clamped)
       if (length(free_local) == 0L) break   # all rows clamped — infeasible cell
     }
 
