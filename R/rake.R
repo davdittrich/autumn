@@ -23,14 +23,18 @@ single_adjust = function(data, weights, target, var, cache) {
   # First, get the current weight balance in the population
   current = weighted_pct(data[[var]], weights)[names(target[[var]])]
 
-  # If you've got an NA for this variable, you don't get multiplied on it.
-  # If not, you get multiplied by the ratio between the target and the current
-  # Why do this as two steps rather than if-else? Twice as fast
-  mult = unname(target[[var]] / current)[cache[[var]]]
-  mult[is.na(data[[var]])] = 1
+  # Multiply each row's weight by target / current for its category.
+  # cache[[var]]$idx: integer index mapping each row to its target level.
+  # NA rows have idx = NA, so mult[NA] = NA; overwrite those with 1 below.
+  mult = unname(target[[var]] / current)[cache[[var]]$idx]
+
+  # NA rows get multiplier 1 (their weight is unchanged).
+  # na_rows was pre-cached once in do_rake(); the is.na() scan is not repeated
+  # here on every call.
+  if(length(cache[[var]]$na_rows) > 0L) mult[cache[[var]]$na_rows] = 1
 
   # Return the new weights, not just the multipliers
-  return(weights * mult)
+  weights * mult
 }
 
 #' Clamp weights to a maximum weight
@@ -87,7 +91,10 @@ do_rake = function(data, target, weights,
   # is only fast if the columns of the data frame are all factors. We can
   # avoid paying this cost by pre-caching it across all iterations.
   pre_cache = lapply(names(target), function(variable) {
-    match(data[[variable]], names(target[[variable]]))
+    list(
+      idx     = match(data[[variable]], names(target[[variable]])),
+      na_rows = which(is.na(data[[variable]]))
+    )
   })
   names(pre_cache) = names(target)
 

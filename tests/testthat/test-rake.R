@@ -50,3 +50,27 @@ test_that("testing fast convergence, timeout, regular convergence", {
             verbose = 1),
     "time limit")
 })
+
+test_that("NA rows in raking variable get weight multiplier 1", {
+  # Rows where the raking variable is NA must not have their weight changed
+  # by single_adjust. This tests that the pre_cache NA path works correctly.
+  data    = data.frame(var1 = c("a", "b", NA, "a"))
+  targets = list(var1 = c("a" = 0.5, "b" = 0.5))
+  weights = c(1, 1, 2, 1)   # NA row has weight 2
+
+  result = do_rake(data, targets, weights,
+                   max_weight = 10,
+                   max_iterations = 100,
+                   convergence = c(pct = 1e-6, absolute = 1e-6),
+                   verbose = FALSE)
+
+  # NA row weight must be unchanged (multiply by 1)
+  expect_equal(result[3], 2)
+
+  # Weighted proportions of "a" and "b" must match targets (0.5 / 0.5)
+  # Non-NA weights sum: result[1] + result[2] + result[4]
+  # "a" weight: result[1] + result[4]; "b" weight: result[2]
+  non_na_sum = result[1] + result[2] + result[4]
+  expect_true(abs((result[1] + result[4]) / non_na_sum - 0.5) < 0.01)
+  expect_true(abs(result[2] / non_na_sum - 0.5) < 0.01)
+})
