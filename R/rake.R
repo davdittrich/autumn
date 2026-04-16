@@ -21,7 +21,7 @@
 single_adjust = function(weights, target, var, cache) {
   # Get the current weight balance in the population.
   # cache[[var]]$x is a pre-converted factor — rowsum() uses integer codes
-  # instead of string hashing, 10-50x faster at large n.
+  # instead of per-call string hashing (see bench/results.md for measured speedup).
   current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
 
   # Multiply each row's weight by target / current for its category.
