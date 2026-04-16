@@ -29,9 +29,12 @@ single_adjust = function(data, weights, target, var, cache) {
   mult = unname(target[[var]] / current)[cache[[var]]$idx]
 
   # NA rows get multiplier 1 (their weight is unchanged).
-  # na_rows was pre-cached once in do_rake(); the is.na() scan is not repeated
-  # here on every call.
-  if(length(cache[[var]]$na_rows) > 0L) mult[cache[[var]]$na_rows] = 1
+  # na_rows covers rows where data[[var]] is NA. Note: out-of-vocabulary values
+  # (present in data but absent from target) also produce NA in idx and would
+  # also get mult=NA; this is a separate pre-existing gap (autumn-7m3).
+  # na_rows was pre-cached once in do_rake() — the is.na() scan is not
+  # repeated here on every call.
+  mult[cache[[var]]$na_rows] = 1
 
   # Return the new weights, not just the multipliers
   weights * mult
