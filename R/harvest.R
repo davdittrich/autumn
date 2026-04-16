@@ -333,6 +333,7 @@ harvest = function(
   add_na_proportion = FALSE,
   target_map = NULL,
   enforce_mean = TRUE,
+  adaptive_order = FALSE,
   ...
 ) {
   # Capture caller's symbol BEFORE any reassignment of `target`
@@ -396,6 +397,7 @@ harvest = function(
   weights = do_rake(data, target[which_rake], weights,
                     max_weight, max_iterations, convergence,
                     enforce_mean,
+                    adaptive_order,
                     verbose)
 
   # Per DeBell and Krosnick, the past raking may have messed up variables which
@@ -437,7 +439,7 @@ harvest = function(
     which_rake = c(which_rake, setdiff(new_rake, which_rake))
     weights = do_rake(data, target[which_rake], weights,
                       max_weight, max_iterations, convergence,
-                      enforce_mean, verbose)
+                      enforce_mean, adaptive_order, verbose)
   }
 
   if(!done) {

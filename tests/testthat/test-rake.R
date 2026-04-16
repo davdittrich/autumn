@@ -96,3 +96,26 @@ test_that("OOV values in raking variable get weight multiplier 1", {
   expect_true(abs((result[1] + result[4]) / non_oov_sum - 0.5) < 0.01)
   expect_true(abs(result[2] / non_oov_sum - 0.5) < 0.01)
 })
+
+test_that("adaptive_order=TRUE converges to same weights as FALSE", {
+  # With multiple variables, adaptive ordering must not change the fixed-point
+  # solution — only potentially reduce iterations needed.
+  # 7-row data with mixed x/y across both a and b levels, so the system is
+  # well-conditioned and IPF converges monotonically regardless of ordering.
+  data    = data.frame(var1 = c("a","b","b","b","a","a","b"),
+                       var2 = c("x","x","y","y","x","y","x"))
+  targets = list(var1 = c("a"=0.5, "b"=0.5),
+                 var2 = c("x"=0.4, "y"=0.6))
+  weights = rep(1, 7)
+  conv    = c(pct=1e-10, absolute=1e-10)
+
+  result_default = do_rake(data, targets, weights,
+                           max_weight=10, max_iterations=2000,
+                           convergence=conv, verbose=FALSE)
+  result_adaptive = do_rake(data, targets, weights,
+                            max_weight=10, max_iterations=2000,
+                            convergence=conv, adaptive_order=TRUE,
+                            verbose=FALSE)
+
+  expect_equal(result_default, result_adaptive, tolerance=1e-6)
+})

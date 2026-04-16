@@ -4,12 +4,9 @@
 \alias{single_adjust}
 \title{Adjust weights based on current imbalance of a single variable.}
 \usage{
-single_adjust(data, weights, target, var, cache)
+single_adjust(weights, target, var, cache)
 }
 \arguments{
-\item{data}{The data frame (tibble) or matrix which contains the original
-data.}
-
 \item{weights}{The current weights}
 
 \item{target}{The target proportions, specified as in \code{\link{harvest}}}
@@ -17,11 +14,14 @@ data.}
 \item{var}{A quoted character vector containing the variable we are currently
 raking on.}
 
-\item{cache}{A list of integer vectors mapping rows of the data frame to
-levels of the target variable}
+\item{cache}{The pre_cache list from \code{do_rake}: each entry is a list
+with \code{x} (factor column), \code{idx} (integer level indices), and
+\code{na_rows} (NA + OOV row positions).}
 }
 \value{
-Adjusted weights, raked for this variable.
+A list with: \code{weights} (adjusted weight vector) and
+  \code{max_dev} (max relative deviation of current from target before
+  adjustment — used by \code{do_rake} for adaptive variable ordering).
 }
 \description{
 This function internally rakes the weights provided according to the

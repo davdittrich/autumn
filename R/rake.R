@@ -16,13 +16,20 @@
 #' @param cache The pre_cache list from \code{do_rake}: each entry is a list
 #'   with \code{x} (factor column), \code{idx} (integer level indices), and
 #'   \code{na_rows} (NA + OOV row positions).
-#' @return Adjusted weights, raked for this variable.
+#' @return A list with: \code{weights} (adjusted weight vector) and
+#'   \code{max_dev} (max relative deviation of current from target before
+#'   adjustment — used by \code{do_rake} for adaptive variable ordering).
 #' @keywords internal
 single_adjust = function(weights, target, var, cache) {
   # Get the current weight balance in the population.
   # cache[[var]]$x is a pre-converted factor — rowsum() uses integer codes
   # instead of per-call string hashing (see bench/results.md for measured speedup).
   current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
+
+  # max_dev: scalar imbalance measure before this adjustment.
+  # Used by do_rake() for adaptive variable ordering.
+  # max(|target/current - 1|) = max relative deviation from target.
+  max_dev = max(abs(target[[var]] / current - 1), na.rm = TRUE)
 
   # Multiply each row's weight by target / current for its category.
   # cache[[var]]$idx: integer level index for each row (from as.integer(factor)).
@@ -33,8 +40,8 @@ single_adjust = function(weights, target, var, cache) {
   # Covers: actual NA in data AND out-of-vocabulary values absent from target.
   mult[cache[[var]]$na_rows] = 1
 
-  # Return the new weights, not just the multipliers
-  weights * mult
+  # Return both the new weights and the pre-adjustment max deviation.
+  list(weights = weights * mult, max_dev = max_dev)
 }
 
 #' Clamp weights to a maximum weight
@@ -76,12 +83,19 @@ clamp_weights_top = function(weights, clamp) {
 do_rake = function(data, target, weights,
                    max_weight, max_iterations, convergence,
                    enforce_mean = TRUE,
+                   adaptive_order = FALSE,
                    verbose) {
   # Get current time
   base_time = Sys.time()
 
   # Pocket algorithm: we want to start this with a very high value
   weight_update_sum = 1e9
+
+  # Adaptive ordering state: rake_order is the variable sequence for each
+  # iteration. var_dev tracks max relative deviation per variable from the
+  # previous iteration and is used to reorder for the next.
+  rake_order = names(target)
+  var_dev    = setNames(rep(Inf, length(names(target))), names(target))
 
   # In the actual raking, we're going to get multipliers for each level of
   # a given target variable. So, for instance, we decide that "LLCs" get a
@@ -124,11 +138,16 @@ do_rake = function(data, target, weights,
     # We need this to benchmark how much the weights change
     old_weights = weights
 
-    # Rake each variable one at a time.
-    for(j in names(target)) {
+    # Rake each variable. With adaptive_order=TRUE, sort by previous-iteration
+    # imbalance (most off-target first) at zero extra cost: max_dev is a free
+    # by-product of the weighted_pct() call inside single_adjust().
+    for(j in rake_order) {
       if(verbose > 2) message("  Raking variable: ", j)
-      weights = single_adjust(weights, target, j, pre_cache)
+      result        = single_adjust(weights, target, j, pre_cache)
+      weights       = result$weights
+      var_dev[j]    = result$max_dev
     }
+    if(adaptive_order) rake_order = names(target)[order(var_dev, decreasing = TRUE)]
 
     # Clamp weights if necessary -- why sum / length? Faster than mean.
     # 1e-4: floating point tolerance; prevents spurious clamp on weights that
