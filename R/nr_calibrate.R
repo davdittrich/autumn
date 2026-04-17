@@ -206,7 +206,14 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
     w1 = wf_pass(w); w2 = wf_pass(w1)
     r = w1 - w; v = w2 - w1
     r_sq = sum(r * r); v_sq = sum(v * v)
-    if (v_sq < .Machine$double.eps) { w = w2; converged = TRUE; break }
+    if (v_sq < .Machine$double.eps) {
+      w = w2
+      # wf_pass is a fixed point; mark converged only when weight change is also
+      # within tolerance. Infeasible cells produce a fixed point that does NOT
+      # satisfy targets — Phase 2 bisection handles that case.
+      if (sum(abs(w2 - w_old)) < tol * total_d) { converged = TRUE }
+      break
+    }
     alpha = max(-sqrt(r_sq / v_sq), -1000)
     plain_resid = sum(v^2); alpha_s = alpha; w_new = w2
     for (.h in seq_len(16)) {
@@ -221,8 +228,54 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
     if (sum(abs(w - w_old)) < tol * total_d) { converged = TRUE; break }
   }
 
-  # Phase 2 bisection fallback: implemented in Task 2.
-  # If Phase 1 did not converge, apply safety clamp and return best-effort weights.
-  if (!converged) w[calibrated] = pmin(w[calibrated], max_weight)
-  w
+  if (!converged) {
+    if (verbose) message("nr Phase 2: SQUAREM did not converge; switching to bisection")
+    for (iter2 in seq_len(max_iter)) {
+      # Compute gradient BEFORE updates (correct convergence check)
+      max_g = 0
+      for (i_v in seq_len(V)) {
+        v   = vars[i_v]
+        off = offsets[i_v]
+        kv  = K_v[i_v]
+        for (k in seq_len(kv)) {
+          cell = cache[[v]]$cell_rows[[k]]
+          if (!length(cell)) next
+          max_g = max(max_g, abs(sum(w[cell]) - T_k[off + k]))
+        }
+      }
+      if (verbose) message("nr bisect iter ", iter2, ": max|g|=", round(max_g, 6))
+      if (max_g < tol * total_d) break
+      # Apply bisection per cell
+      for (i_v in seq_len(V)) {
+        v   = vars[i_v]
+        off = offsets[i_v]
+        kv  = K_v[i_v]
+        for (k in seq_len(kv)) {
+          cell = cache[[v]]$cell_rows[[k]]
+          if (!length(cell)) next
+          T_abs = T_k[off + k]; wc = w[cell]
+          if (T_abs > length(wc) * max_weight + 1e-10) {
+            warning(sprintf("nr_calibrate: infeasible cell (var %s, level %d): target %.4f > max achievable %.4f",
+                            vars[i_v], k, T_abs, length(wc) * max_weight))
+            w[cell] = max_weight; next
+          }
+          lo = 0; hi = max_weight / min(pmax(wc, .Machine$double.eps))
+          for (.bi in seq_len(64)) {
+            lam = (lo + hi) / 2
+            s   = sum(pmin(wc * lam, max_weight))
+            if (abs(s - T_abs) < 1e-12 * max(T_abs, 1)) break
+            if (s < T_abs) lo = lam else hi = lam
+          }
+          w[cell] = pmin(wc * lam, max_weight)
+        }
+      }
+    }
+    # Non-convergence warning (only when Phase 1+2 both failed)
+    if (max_g >= tol * total_d) {
+      warning("nr_calibrate bounded: did not converge after Phase 1 (SQUAREM) and Phase 2 (bisection). Returning best-effort weights.")
+    }
+    # Final safety clamp
+    w[calibrated] = pmin(w[calibrated], max_weight)
+  }  # end if (!converged)
+  return(w)
 }

@@ -225,6 +225,72 @@ test_that("harvest method='nr' bounded (max_weight=5) agrees with IPF marginals"
   }
 })
 
+test_that("nr_calibrate bounded activates Phase 2 bisection on extreme imbalance", {
+  # max_iter=1 exhausts Phase 1's single-step budget before convergence,
+  # guaranteeing Phase 2 activates and emits the "bisection" message.
+  # A: 20 rows * max_weight=5 = 100 >= T_abs_A = 80. All cells feasible.
+  set.seed(42)
+  n      = 400
+  data_b = data.frame(
+    x = c(rep("A", 20), rep("B", 380)),
+    y = sample(c("p", "q"), n, replace = TRUE)
+  )
+  tgt_b = list(
+    x = c(A = 0.20, B = 0.80),
+    y = c(p = 0.50, q = 0.50)
+  )
+  expect_message(
+    result_b <- nr_calibrate(data_b, tgt_b, rep(1, n),
+                             max_weight = 5, max_iter = 1, tol = 1e-8,
+                             verbose = TRUE),
+    "bisection"
+  )
+  expect_true(max(result_b) <= 5 + 1e-4, label = "Phase2 B: weights bounded at 5")
+  expect_false(any(is.na(result_b)),      label = "Phase2 B: no NA")
+})
+
+test_that("nr_calibrate bounded Phase 2 bisection achieves per-cell precision", {
+  # 3-category single-variable problem. Force Phase 1 to timeout in 1 super-step,
+  # then bisection converges to per-cell precision.
+  set.seed(7)
+  n  = 300
+  data_c = data.frame(
+    cat = sample(c("X","Y","Z"), n, replace = TRUE, prob = c(0.6, 0.3, 0.1))
+  )
+  # Feasible targets: ~30 Z rows * max_weight=2 = 60 >= T_abs_Z = 0.15*300 = 45.
+  tgt_c = list(cat = c(X=0.50, Y=0.35, Z=0.15))
+  total_d_c = n
+
+  result_c = nr_calibrate(data_c, tgt_c, rep(1, n),
+                           max_weight = 2, max_iter = 1, tol = 1e-8)
+
+  T_abs = tgt_c$cat * total_d_c
+  f     = factor(data_c$cat, levels = names(tgt_c$cat))
+  idx   = as.integer(f)
+  for (k in seq_along(tgt_c$cat)) {
+    cell_k = which(idx == k)
+    if (!length(cell_k)) next
+    expect_true(abs(sum(result_c[cell_k]) - T_abs[k]) < 1e-6,
+                label = paste0("bisect exactness for cell ", k))
+  }
+})
+
+test_that("nr_calibrate bounded warns on infeasible cell and remains bounded", {
+  # Single "a" row, max_weight=0.1, total_d=2. T_abs for "a" = 0.5*2 = 1.0 > 1*0.1.
+  data_d    = data.frame(var1 = c("a", "b"))
+  targets_d = list(var1 = c("a"=0.5, "b"=0.5))
+  weights_d = c(1, 1)
+  max_w_d   = 0.1
+
+  expect_warning(
+    result_d <- nr_calibrate(data_d, targets_d, weights_d,
+                             max_weight = max_w_d, max_iter = 50, tol = 1e-8),
+    "infeasible cell"
+  )
+  expect_true(max(result_d) <= max_w_d + 1e-4, label = "infeasible: output bounded")
+  expect_false(any(is.na(result_d)),            label = "infeasible: no NA")
+})
+
 test_that("nr_calibrate bounded Phase 1 SQUAREM converges on ns_target (max_weight=5)", {
   result_nr = nr_calibrate(respondent_data, ns_target,
                             rep(1, nrow(respondent_data)),
