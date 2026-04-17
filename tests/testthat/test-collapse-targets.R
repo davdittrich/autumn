@@ -84,3 +84,124 @@ test_that("cell_profile_distance: empty j_rows returns Inf", {
   d = data.frame(x = 1:6, stringsAsFactors = FALSE)
   expect_equal(autumn:::cell_profile_distance(d, 1:3, integer(0), "x"), Inf)
 })
+
+# ── fixtures ──────────────────────────────────────────────────────────────────
+# 6-row data: grp has A=3, B=3; no C in data; income separates A and B clearly
+mk_unord = function() {
+  list(
+    data   = data.frame(
+      grp = c("A","A","A","B","B","B"),
+      inc = c(10, 12, 11, 50, 52, 51),
+      stringsAsFactors = FALSE
+    ),
+    target = list(grp = c(A = 0.4, B = 0.3, C = 0.3))
+  )
+}
+
+# 7-row data: grp A=3, B=3, C=1; C's income matches A not B
+mk_small = function() {
+  list(
+    data   = data.frame(
+      grp = c("A","A","A","B","B","B","C"),
+      inc = c(1,  2,  3,  10, 11, 12, 2),
+      stringsAsFactors = FALSE
+    ),
+    target = list(grp = c(A = 0.4, B = 0.35, C = 0.25))
+  )
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+test_that("collapse_targets: missing cell merges by proportion fallback", {
+  f = mk_unord()
+  # C has 0 rows → fallback to |p_k - p_j|: |0.3-0.4|=0.1 vs |0.3-0.3|=0; C→B
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5)
+  )
+  expect_equal(names(result$target$grp), c("A", "B"))
+  expect_equal(unname(result$target$grp["B"]), 0.6)
+  expect_equal(unname(result$target$grp["A"]), 0.4)
+})
+
+test_that("collapse_targets: missing cell recode in data", {
+  f = mk_unord()
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5)
+  )
+  # No rows had C; data unchanged is fine but must not contain C
+  expect_false("C" %in% unique(result$data$grp))
+})
+
+test_that("collapse_targets: small cell merges toward profile-similar cell", {
+  f = mk_small()
+  # n=7, p_C=0.25, max_weight=5: cap_floor=ceiling(7*0.25/5)=1; min_abs=3; threshold=3
+  # C has 1 row → collapse. collapse_vars="inc": C's inc=2 is close to A (mean=2) not B (mean=11)
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target,
+                              max_weight   = 5,
+                              collapse_vars = "inc")
+  )
+  expect_equal(names(result$target$grp), c("A", "B"))
+  expect_equal(unname(result$target$grp["A"]), 0.65)  # 0.4 + 0.25
+})
+
+test_that("collapse_targets: data recoded for small cell rows", {
+  f = mk_small()
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target,
+                              max_weight   = 5,
+                              collapse_vars = "inc")
+  )
+  # Original C row (row 7) should now read "A"
+  expect_equal(result$data$grp[7], "A")
+})
+
+test_that("collapse_targets: collapse_vars=NULL falls back to calibration vars", {
+  f = mk_small()
+  # collapse_vars=NULL → aux_vars = names(target) = "grp"
+  # av = "grp"[!"grp"] = character(0) → proportion fallback
+  # |p_A-p_C|=|0.4-0.25|=0.15 vs |p_B-p_C|=|0.35-0.25|=0.10 → C→B
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5)
+  )
+  expect_equal(unname(result$target$grp["B"]), 0.6)  # B absorbs C
+})
+
+test_that("collapse_targets: collapsed_levels attribute present and accurate", {
+  f = mk_unord()
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_s3_class(cl, "data.frame")
+  expect_equal(cl$variable, "grp")
+  expect_equal(cl$from,     "C")
+  expect_equal(cl$into,     "B")
+  expect_equal(cl$n_from,   0L)
+  expect_equal(cl$p_from,   0.3)
+})
+
+test_that("collapse_targets: no collapses returns NULL collapsed_levels", {
+  d   = data.frame(grp = rep(c("A","B","C"), each = 10), stringsAsFactors = FALSE)
+  tgt = list(grp = c(A = 1/3, B = 1/3, C = 1/3))
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  expect_null(attr(result, "collapsed_levels"))
+})
+
+test_that("collapse_targets: original data not mutated", {
+  f = mk_small()
+  orig = f$data$grp
+  suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5, collapse_vars = "inc")
+  )
+  expect_equal(f$data$grp, orig)
+})
+
+test_that("collapse_targets: warning emitted per merge", {
+  f = mk_unord()
+  expect_warning(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5),
+    "auto_collapse"
+  )
+})
