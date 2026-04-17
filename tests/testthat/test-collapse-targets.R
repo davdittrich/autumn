@@ -32,3 +32,17 @@ test_that("collapse_threshold: large target proportion raises cap_floor", {
   expect_true(autumn:::collapse_threshold(9L, 0.5, 100L, 5))
   expect_false(autumn:::collapse_threshold(10L, 0.5, 100L, 5))
 })
+
+test_that("collapse_threshold: p_k=0 with zero respondents uses min_abs only", {
+  # cap_floor = ceiling(n * 0 / max_weight) = 0; threshold = min_abs = 3
+  expect_true(autumn:::collapse_threshold(0L, 0.0, 100L, 5))
+  expect_true(autumn:::collapse_threshold(2L, 0.0, 100L, 5))
+  expect_false(autumn:::collapse_threshold(3L, 0.0, 100L, 5))
+})
+
+test_that("collapse_threshold: max_weight=0 produces Inf cap_floor (always collapses)", {
+  # ceiling(n * p_k / 0) = Inf; n_k < Inf is always TRUE for finite n_k
+  # This documents the behaviour for an invalid caller — collapse_threshold
+  # is @keywords internal and relies on harvest() to validate max_weight > 0.
+  expect_true(autumn:::collapse_threshold(999L, 0.5, 100L, 0))
+})
