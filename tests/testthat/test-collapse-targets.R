@@ -292,3 +292,99 @@ test_that("ordered: zero-respondent level uses proportion fallback within adjace
   expect_equal(cl$from, "18-24")
   expect_equal(cl$into, "25-34")
 })
+
+# ── Task 5: error conditions and agglomeration chain ──────────────────────────
+
+test_that("collapse_targets: stops when all levels would collapse to one", {
+  # n=2: both levels have 1 row; min_abs=max(3,floor(2*0.002))=3; both below 3
+  # After A merges into B: B has 2 rows, p=1.0; threshold=max(3,ceiling(2/5))=3;
+  # 2<3 TRUE while length(level_names)==1 → stop()
+  d   = data.frame(grp = c("A", "B"), stringsAsFactors = FALSE)
+  tgt = list(grp = c(A = 0.5, B = 0.5))
+  expect_error(
+    suppressWarnings(autumn:::collapse_targets(d, tgt, max_weight = 5)),
+    "all levels"
+  )
+})
+
+test_that("collapse_targets: stops for invalid collapse_vars", {
+  f = mk_unord()
+  expect_error(
+    autumn:::collapse_targets(f$data, f$target,
+                              max_weight    = 5,
+                              collapse_vars = c("income_NONEXISTENT")),
+    "collapse_vars not found"
+  )
+})
+
+test_that("collapse_targets: agglomeration chain — A merges into B, B then passes threshold", {
+  # n=7: A=1, B=2, C=4; tgt A=0.10, B=0.20, C=0.70
+  # threshold_A=max(3,ceiling(7*0.1/5))=3; A(1)<3 → collapse
+  # threshold_B=max(3,ceiling(7*0.2/5))=3; B(2)<3 → collapse
+  # threshold_C=max(3,ceiling(7*0.7/5))=3; C(4)>=3 → OK
+  # smallest=A(1); prop distances A→B=0.1, A→C=0.6 → A merges into B
+  # After merge: B has 3 rows, p=0.30; threshold_B_new=max(3,1)=3; 3<3 FALSE → OK
+  # Round 2: no collapse flags set → break; total 1 merge
+  d   = data.frame(
+    grp = c("A", "B","B", "C","C","C","C"),
+    stringsAsFactors = FALSE
+  )
+  tgt = list(grp = c(A = 0.10, B = 0.20, C = 0.70))
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(nrow(cl), 1L)
+  expect_equal(cl$from, "A")
+  expect_equal(cl$into, "B")
+  expect_equal(names(result$target$grp), c("B", "C"))
+  expect_equal(unname(result$target$grp["B"]), 0.30)
+})
+
+test_that("collapse_targets: deep chain — A→B→C when B stays below threshold after merge", {
+  # n=4: A=1, B=1, C=2; tgt A=0.25, B=0.25, C=0.50
+  # All three below threshold=3; which.min(c(1,1,2))=A; A→B (|0.25-0.25|=0 < |0.25-0.5|)
+  # After merge: B has 2 rows (p=0.50); threshold=max(3,ceiling(4*0.5/5))=3; 2<3 → still collapse
+  # Round 2: B(2) and C(2) both below 3; which.min(c(2,2))=B; B→C
+  # After merge: C has 4 rows, p=1.0; threshold=max(3,ceiling(4*1.0/5))=3; 4<3 FALSE → break
+  # Total: 2 merges (A→B, B→C); final target has only C=1.0
+  d   = data.frame(
+    grp = c("A", "B", "C","C"),
+    stringsAsFactors = FALSE
+  )
+  tgt = list(grp = c(A = 0.25, B = 0.25, C = 0.50))
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(nrow(cl), 2L)
+  expect_equal(names(result$target$grp), "C")
+  expect_equal(unname(result$target$grp["C"]), 1.0)
+})
+
+test_that("collapse_targets: warnings suppressible", {
+  f = mk_unord()
+  expect_no_warning(
+    suppressWarnings(
+      autumn:::collapse_targets(f$data, f$target, max_weight = 5)
+    )
+  )
+})
+
+test_that("collapse_targets: multiple variables processed independently", {
+  d = data.frame(
+    v1 = c("A","A","A","B"),
+    v2 = c("X","X","X","Y"),
+    stringsAsFactors = FALSE
+  )
+  tgt = list(
+    v1 = c(A = 0.6, B = 0.4),
+    v2 = c(X = 0.6, Y = 0.4)
+  )
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(nrow(cl), 2L)
+  expect_setequal(cl$variable, c("v1", "v2"))
+})
