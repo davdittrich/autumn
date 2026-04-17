@@ -1,5 +1,20 @@
 # autumn (development)
 
+* `harvest()` gains two new parameters, `auto_collapse` and `collapse_vars`,
+  enabling automatic collapse of sparse or absent calibration cells.  When
+  `auto_collapse = TRUE`, any target level whose respondent count falls below
+  the adaptive threshold `max(3, floor(n * 0.002), ceiling(n * p_k /
+  max_weight))` is merged into its nearest-neighbour surviving level before
+  calibration begins.  Nearest-neighbour similarity is measured over the
+  auxiliary columns in `collapse_vars` (defaults to the other calibration
+  variables): numeric columns use standardised mean difference, categorical
+  columns use total variation distance.  Ordered factors restrict merging to
+  immediately adjacent levels.  The original level labels are restored in the
+  returned data frame; only the calibration is affected.  Each merge emits a
+  `warning()`.  A `collapsed_levels` data frame attribute documents every
+  merge (columns: `variable`, `from`, `into`, `n_from`, `p_from`,
+  `distance`).
+
 * `harvest()` with `method = "nr"` now respects `max_weight` natively via
   sequential IPF with inline clamping. Previously, `method = "nr"` applied a
   post-hoc hard clamp that displaced calibrated marginals. The new bounded path
