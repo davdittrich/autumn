@@ -308,6 +308,21 @@
 #'   When \code{method = "nr"} and \code{select_function} is not the default
 #'   \code{"pct"}, a warning is emitted because NR calibrates all variables
 #'   simultaneously and cannot honour variable-selection logic.
+#' @param auto_collapse Logical, default \code{FALSE}. When \code{TRUE},
+#'   automatically detects and merges calibration target levels that are absent
+#'   from the sample or whose respondent count falls below an adaptive threshold
+#'   (derived from \code{max_weight} and sample size) into the most similar
+#'   surviving level before calibration runs. A \code{collapsed_levels} attribute
+#'   is attached to the return value documenting every merge. When
+#'   \code{FALSE} (the default), the existing hard errors for missing levels are
+#'   unchanged.
+#' @param collapse_vars A character vector of column names in \code{data} to use
+#'   as the similarity signal when choosing the nearest-neighbour merge target.
+#'   Any column in \code{data} is valid, including columns not in \code{target}.
+#'   When \code{NULL} (the default), the other calibration variables (i.e.
+#'   \code{names(target)}) are used. If those are exhausted (single-variable
+#'   target), merging falls back to nearest target proportion. Only used when
+#'   \code{auto_collapse = TRUE}.
 #' @param ... Additional arguments to this function are ignored
 #' @return The original data frame \code{data} augmented with a new column
 #'   containing the calculated weights if \code{attach_weights} is TRUE
@@ -366,6 +381,8 @@ harvest = function(
   adaptive_order = FALSE,
   accelerate = FALSE,
   method = "rake",
+  auto_collapse = FALSE,
+  collapse_vars = NULL,
   ...
 ) {
   # Capture caller's symbol BEFORE any reassignment of `target`
@@ -403,7 +420,9 @@ harvest = function(
 
   # If user wants us to augment the target to replace NAs in a variable with
   # a fixed proportion from the sample.
-  data_original = NULL
+  data_original        = NULL
+  data_before_collapse = NULL
+  collapsed_levels_attr = NULL
   if((is.logical(add_na_proportion) && add_na_proportion) ||
      (!is.logical(add_na_proportion) && length(add_na_proportion))) {
     if(verbose) {
@@ -417,6 +436,15 @@ harvest = function(
     # Now replace the NAs in the data
     data_original = data
     data = update_na_values(data, target, add_na_proportion)
+  }
+
+  # Auto-collapse sparse/missing target levels before validation
+  if (isTRUE(auto_collapse)) {
+    data_before_collapse  = data
+    collapse_result       = collapse_targets(data, target, max_weight, collapse_vars)
+    data                  = collapse_result$data
+    target                = collapse_result$target
+    collapsed_levels_attr = attr(collapse_result, "collapsed_levels")
   }
 
   # Basic error checking in the data
@@ -442,12 +470,12 @@ harvest = function(
     if(!attach_weights) {
       return(weights)
     }
-    if(!is.null(data_original)) {
-      data = data_original
-    }
+    if (!is.null(data_before_collapse)) data = data_before_collapse
+    if (!is.null(data_original))        data = data_original
     new_column_name = name_weight_column(data, weight_column)
     data[[new_column_name]] = weights
     attr(data, "target_symbol") = target_symbol
+    if (!is.null(collapsed_levels_attr)) attr(data, "collapsed_levels") = collapsed_levels_attr
     return(data)
   }
 
@@ -542,12 +570,12 @@ harvest = function(
     return(weights)
   }
 
-  if(!is.null(data_original)) {
-    data = data_original
-  }
+  if (!is.null(data_before_collapse)) data = data_before_collapse
+  if (!is.null(data_original))        data = data_original
 
   new_column_name = name_weight_column(data, weight_column)
   data[[new_column_name]] = weights
   attr(data, "target_symbol") = target_symbol
+  if (!is.null(collapsed_levels_attr)) attr(data, "collapsed_levels") = collapsed_levels_attr
   return(data)
 }

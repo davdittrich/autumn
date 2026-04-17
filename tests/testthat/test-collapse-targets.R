@@ -388,3 +388,75 @@ test_that("collapse_targets: multiple variables processed independently", {
   expect_equal(nrow(cl), 2L)
   expect_setequal(cl$variable, c("v1", "v2"))
 })
+
+# ── Task 6: harvest() integration tests ──────────────────────────────────────
+
+test_that("harvest auto_collapse=FALSE still errors on missing level", {
+  f = mk_unord()
+  expect_error(
+    harvest(f$data, f$target, auto_collapse = FALSE),
+    "missing levels in data"
+  )
+})
+
+test_that("harvest auto_collapse=TRUE: missing level → weights produced", {
+  f = mk_unord()
+  result = suppressWarnings(
+    harvest(f$data, f$target,
+            auto_collapse  = TRUE,
+            attach_weights = TRUE)
+  )
+  expect_s3_class(result, "data.frame")
+  expect_true("weights" %in% colnames(result))
+  expect_equal(nrow(result), 6L)
+  expect_true(all(!is.na(result$weights)))
+})
+
+test_that("harvest auto_collapse=TRUE: returned data has ORIGINAL level names", {
+  f = mk_unord()
+  result = suppressWarnings(
+    harvest(f$data, f$target,
+            auto_collapse  = TRUE,
+            attach_weights = TRUE)
+  )
+  # Original data had A and B only; returned data must match original
+  expect_equal(sort(unique(result$grp)), c("A", "B"))
+  expect_false("C" %in% result$grp)
+})
+
+test_that("harvest auto_collapse=TRUE: collapsed_levels attr attached", {
+  f = mk_unord()
+  result = suppressWarnings(
+    harvest(f$data, f$target,
+            auto_collapse  = TRUE,
+            attach_weights = TRUE)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_s3_class(cl, "data.frame")
+  expect_true("from" %in% colnames(cl))
+})
+
+test_that("harvest auto_collapse=TRUE with collapse_vars: profile-driven merge", {
+  f = mk_small()
+  # With collapse_vars="inc", C's income ~A → C merges into A
+  result = suppressWarnings(
+    harvest(f$data, f$target,
+            max_weight    = 5,
+            auto_collapse = TRUE,
+            collapse_vars = "inc",
+            attach_weights = TRUE)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(cl$into, "A")
+})
+
+test_that("harvest auto_collapse=TRUE: attach_weights=FALSE returns weight vector", {
+  f = mk_unord()
+  w = suppressWarnings(
+    harvest(f$data, f$target,
+            auto_collapse  = TRUE,
+            attach_weights = FALSE)
+  )
+  expect_type(w, "double")
+  expect_length(w, 6L)
+})
