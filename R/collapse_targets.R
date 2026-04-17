@@ -24,6 +24,7 @@ cell_profile_distance = function(data, k_rows, j_rows, collapse_vars) {
     if (is.numeric(data[[col]])) {
       mk = mean(xk, na.rm = TRUE)
       mj = mean(xj, na.rm = TRUE)
+      if (is.na(mk) || is.na(mj)) return(Inf)
       sp = sd(c(xk, xj), na.rm = TRUE)
       if (is.na(sp) || sp < .Machine$double.eps) return(0)
       abs(mk - mj) / sp
