@@ -224,3 +224,29 @@ test_that("harvest method='nr' bounded (max_weight=5) agrees with IPF marginals"
                  label=paste0("bounded marginal agreement for ", v))
   }
 })
+
+test_that("nr_calibrate bounded Phase 1 SQUAREM converges on ns_target (max_weight=5)", {
+  result_nr = nr_calibrate(respondent_data, ns_target,
+                            rep(1, nrow(respondent_data)),
+                            max_weight = 5, max_iter = 50, tol = 1e-8)
+
+  result_rake = do_rake(respondent_data, ns_target,
+                        rep(1, nrow(respondent_data)),
+                        max_weight     = 5,
+                        max_iterations = 5000,
+                        convergence    = c(pct = 1e-10, absolute = 1e-10),
+                        verbose        = FALSE)
+
+  expect_true(max(result_nr) <= 5 + 1e-4, label = "Phase1: weights bounded at 5")
+  expect_false(any(is.na(result_nr)),       label = "Phase1: no NA weights")
+
+  for (v in names(ns_target)) {
+    pct_nr = weighted_pct(factor(respondent_data[[v]],
+                                  levels = names(ns_target[[v]])),
+                           result_nr)
+    expect_true(
+      max(abs(pct_nr[names(ns_target[[v]])] - ns_target[[v]])) < 0.01,
+      label = paste0("Phase1: marginals within 0.01 for ", v)
+    )
+  }
+})

@@ -46,9 +46,11 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
   cache = lapply(vars, function(v) {
     f    = factor(data[[v]], levels = names(target[[v]]))
     idx  = as.integer(f)
-    list(x       = f,
-         idx     = idx,
-         na_rows = which(is.na(idx)))
+    list(x         = f,
+         idx       = idx,
+         na_rows   = which(is.na(idx)),
+         cell_rows = lapply(seq_len(length(levels(f))),
+                            function(k) which(idx == k)))
   })
   names(cache) = vars
 
@@ -155,59 +157,68 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
     return(w)
   }
 
-  # --- Bounded path: sequential IPF with inline clamping ---
+  # --- Bounded path: SQUAREM-accelerated water-filling IPF + bisection fallback ---
   #
   # OOV row handling: OOV values become NA after factor() so
-  # `cache[[v]]$idx[i] = NA` for OOV/NA rows. calibrated[i] = TRUE iff row i
+  # cache[[v]]$idx[i] = NA for OOV/NA rows. calibrated[i] = TRUE iff row i
   # has a valid code in at least one variable. OOV/NA-in-all rows are exempt
   # from the cap and the final safety clamp. This mirrors bounded do_rake.
   calibrated = Reduce("|", lapply(cache, function(cv) !is.na(cv$idx)))
 
-  # Sequential IPF with inline clamping.
-  # This is the same algorithm as do_rake's bounded IPF, without variable
-  # selection. Provably convergent; no K×K linear system, no Inf overflow.
-  # max_iter controls the number of full passes through all V variables.
-  for (iter in seq_len(max_iter)) {
-    max_g = 0
-
+  # wf_pass: one Gauss-Seidel water-filling sweep through all V variables.
+  # Per cell (v, k): find multiplier m such that sum(min(wc * m, max_weight)) = T_abs,
+  # iteratively capping rows that exceed max_weight and redistributing to free rows.
+  # Terminates in at most length(cell)+1 inner iterations (finite active set).
+  # Gauss-Seidel: each cell reads weights modified by all prior cells in this sweep.
+  wf_pass = function(w) {
     for (i_v in seq_len(V)) {
-      v   = vars[i_v]
-      off = offsets[i_v]
-      kv  = K_v[i_v]
-
-      wt_sums = tapply(w, cache[[v]]$x, sum)
-      wt_sums = wt_sums[names(target[[v]])]
-      wt_sums[is.na(wt_sums)] = 0
-      wt_sums = as.numeric(wt_sums)
-
-      g_v = wt_sums - T_k[off + seq_len(kv)]
-      # Dead cells (no observations): skip update and gradient.
-      dead    = wt_sums < 1e-10
-      g_v[dead] = 0
-      max_g = max(max_g, max(abs(g_v)))
-
-      # Multiplicative ratio update = standard IPF step.
-      # No exp() → no overflow risk when T_k >> wt_sum.
-      ratio_v       = T_k[off + seq_len(kv)] / pmax(wt_sums, 1e-10)
-      ratio_v[dead] = 1
-
-      idx = cache[[v]]$idx
-      valid = !is.na(idx)          # all calibrated rows (not just free)
-      if (any(valid)) {
-        w[valid] = w[valid] * ratio_v[idx[valid]]
-        w        = pmax(w, .Machine$double.eps)
+      v   = vars[i_v]; off = offsets[i_v]; kv = K_v[i_v]
+      for (k in seq_len(kv)) {
+        cell = cache[[v]]$cell_rows[[k]]
+        if (!length(cell)) next
+        T_abs  = T_k[off + k]
+        wc     = w[cell]; free = seq_along(wc); cm = 0
+        for (.i in seq_len(length(wc) + 1L)) {
+          S = sum(wc[free])
+          if (S <= .Machine$double.eps || T_abs - cm <= 0) break
+          m = (T_abs - cm) / S
+          nc = free[wc[free] * m > max_weight]
+          if (!length(nc)) { wc[free] = wc[free] * m; break }
+          wc[nc] = max_weight; cm = cm + max_weight * length(nc)
+          free = free[match(free, nc, 0L) == 0L]
+        }
+        w[cell] = wc
       }
-
-      # Inline clamp after each variable update; OOV rows exempt.
-      w[calibrated] = pmin(w[calibrated], max_weight)
     }
-
-    if (verbose) message("NR bounded iter ", iter, ": max |g| = ", round(max_g, 6))
-    if (max_g < tol * total_d) break
+    w
   }
 
-  # Final safety clamp: guard against NR overshoot in the last inner iteration.
-  # Applied only to calibrated rows; OOV/NA rows are untouched.
-  w[calibrated] = pmin(w[calibrated], max_weight)
+  # Phase 1: SQUAREM SqS3 (Varadhan & Roland 2008).
+  # Two wf_pass calls build the CBB step; step-halving prevents overshooting.
+  # ||v||^2 near zero => wf_pass has converged; accept w2 without division.
+  converged = FALSE
+  for (sq in seq_len(max_iter)) {
+    w_old = w
+    w1 = wf_pass(w); w2 = wf_pass(w1)
+    r = w1 - w; v = w2 - w1
+    r_sq = sum(r * r); v_sq = sum(v * v)
+    if (v_sq < .Machine$double.eps) { w = w2; converged = TRUE; break }
+    alpha = max(-sqrt(r_sq / v_sq), -1000)
+    plain_resid = sum(v^2); alpha_s = alpha; w_new = w2
+    for (.h in seq_len(16)) {
+      w_star = pmax(w - 2*alpha_s*r + alpha_s^2*v, .Machine$double.eps)
+      w_cand = wf_pass(w_star)
+      if (sum((w_cand - w_star)^2) <= plain_resid * 1.01) { w_new = w_cand; break }
+      alpha_s = (alpha_s + (-1)) / 2
+      if (abs(alpha_s + 1) < 1e-3) { w_new = w2; break }
+    }
+    w = w_new
+    if (verbose) message("nr Phase1 sq ", sq, ": |Δw|=", round(sum(abs(w - w_old)), 6))
+    if (sum(abs(w - w_old)) < tol * total_d) { converged = TRUE; break }
+  }
+
+  # Phase 2 bisection fallback: implemented in Task 2.
+  # If Phase 1 did not converge, apply safety clamp and return best-effort weights.
+  if (!converged) w[calibrated] = pmin(w[calibrated], max_weight)
   w
 }
