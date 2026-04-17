@@ -284,21 +284,25 @@
 #'   only when the \code{pct} criterion is disabled and convergence requires
 #'   hundreds of iterations. Most users should leave this at the default FALSE.
 #' @param method Character, one of \code{"rake"} (default) or \code{"nr"}.
-#'   \code{"rake"} uses the standard iterative proportional fitting (IPF)
-#'   algorithm. \code{"nr"} uses a Newton-Raphson calibration solver that
-#'   converges in 10--20 iterations regardless of imbalance severity, versus
-#'   100--500 for IPF on severely skewed data (typically much faster for
-#'   large n or severely imbalanced data).
+#'   \code{"rake"} uses standard iterative proportional fitting (IPF).
+#'   \code{"nr"} behaviour depends on \code{max_weight}:
 #'
-#'   \strong{Important:} When \code{max_weight} is binding (which it is under
-#'   the default \code{max_weight = 5} for most survey data), \code{method =
-#'   "nr"} produces \emph{different weights} from \code{method = "rake"}
-#'   because the two methods apply the \code{max_weight} constraint at
-#'   different points in iteration. Marginal proportions match within
-#'   tolerance; individual weights can differ substantially. Switching the
-#'   default would be a breaking change for existing analyses, so
-#'   \code{"rake"} remains the default. Use \code{"nr"} explicitly when speed
-#'   matters more than weight continuity with prior runs.
+#'   \itemize{
+#'     \item \code{max_weight = Inf} (unbounded): full Newton-Raphson with a
+#'       K×K Hessian solve.  Converges in 10--20 iterations regardless of
+#'       imbalance severity, versus 100--500 for IPF on severely skewed data.
+#'       \strong{This is the case where \code{method = "nr"} is faster.}
+#'     \item \code{max_weight < Inf} (bounded, including the default 5):
+#'       sequential IPF with inline per-step clamping — the same algorithm as
+#'       \code{method = "rake"} but without variable-selection skipping.
+#'       \strong{Not faster than rake}; may be marginally slower.  Produces
+#'       slightly different weights because it uses multiply-then-clamp rather
+#'       than rake's per-cell water-filling.
+#'   }
+#'
+#'   Switching the default would be a breaking change for existing analyses, so
+#'   \code{"rake"} remains the default.  Use \code{method = "nr"} when you also
+#'   set \code{max_weight = Inf} and the data are severely imbalanced.
 #'
 #'   When \code{method = "nr"} and \code{select_function} is not the default
 #'   \code{"pct"}, a warning is emitted because NR calibrates all variables
