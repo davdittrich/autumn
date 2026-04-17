@@ -119,10 +119,9 @@ character vectors of column names.}
 \item{enforce_mean}{Default TRUE. In the IPF path (\code{method = "rake"}),
 bounded redistribution preserves the total weight sum exactly, so this
 parameter is a no-op — re-meaning after redistribution would displace
-calibrated proportions. In the Newton-Raphson path
-(\code{method = "nr"}), weights are still re-meaned after each clamp
-cycle. The parameter is retained in both function signatures for backward
-compatibility.}
+calibrated proportions. In the Newton-Raphson path (\code{method = "nr"}),
+this parameter is also a no-op: the NR solver manages weights internally
+and does not re-mean. The parameter is retained for backward compatibility.}
 
 \item{accelerate}{Logical, default FALSE. If TRUE, replaces the standard
 Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan

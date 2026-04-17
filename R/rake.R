@@ -91,19 +91,6 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
   list(weights = new_w, max_dev = max_dev)
 }
 
-#' Clamp weights to a maximum weight
-#'
-#' @param weights Current vector of weights
-#' @param clamp A scalar maximum weight
-#' @return A vector of clamped weights
-#' @keywords internal
-clamp_weights_top = function(weights, clamp) {
-  # Parallel minimum: if a weight is above the maximum, clamp it down.
-  # pmin is faster than other options; copying the vector and overwriting
-  # using a subset is somewhat faster but allocates much more memory.
-  pmin(weights, clamp)
-}
-
 #' Performs iterative raking on data
 #'
 #' This function performs iterative raking as described in DeBell and Krosnick

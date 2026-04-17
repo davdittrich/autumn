@@ -10,7 +10,8 @@ nr_calibrate(
   initial_weights = rep(1, nrow(data)),
   max_iter = 50,
   tol = 1e-08,
-  verbose = FALSE
+  verbose = FALSE,
+  max_weight = Inf
 )
 }
 \arguments{
@@ -21,13 +22,18 @@ nr_calibrate(
 \item{initial_weights}{A numeric vector of starting weights. Defaults to 1
 for each row (unit weights).}
 
-\item{max_iter}{Maximum number of Newton-Raphson iterations.}
+\item{max_iter}{Maximum number of Newton-Raphson iterations (inner loop).
+The outer active-set loop also runs at most \code{max_iter} iterations.}
 
 \item{tol}{Convergence tolerance: stop when \code{max(|g|) < tol * total_d}
 where g is the gradient (weighted count minus target count) and
 \code{total_d = sum(initial_weights)}.}
 
 \item{verbose}{Logical. If TRUE, print per-iteration convergence information.}
+
+\item{max_weight}{Scalar upper bound on individual weights. Rows that are
+out-of-vocabulary (OOV) or NA in all calibration variables are exempt.
+Default \code{Inf} disables the constraint (exact original behaviour).}
 }
 \value{
 A numeric vector of calibrated weights.
@@ -38,5 +44,14 @@ Newton-Raphson iteration. Converges in 10-20 iterations regardless of
 imbalance severity, compared to 100-1000 iterations for iterative proportional
 fitting (IPF). Appropriate for high-cardinality targets (K=100-10000 categories
 total) and severely imbalanced data.
+}
+\details{
+When \code{max_weight} is finite, a sequential IPF loop with inline per-step
+clamping enforces the bound.  This is the same algorithm as
+\code{\link{harvest}}'s default bounded rake, without the variable-selection
+overhead.  The full cross-variable Hessian is skipped because interaction
+variables create near-linear dependence that makes the K×K system ill-conditioned
+when any weight is near the cap.  The sequential IPF step is provably convergent
+and converges to the same bounded calibration solution as bounded IPF.
 }
 \keyword{internal}

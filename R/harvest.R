@@ -271,10 +271,9 @@
 #' @param enforce_mean Default TRUE. In the IPF path (\code{method = "rake"}),
 #'   bounded redistribution preserves the total weight sum exactly, so this
 #'   parameter is a no-op — re-meaning after redistribution would displace
-#'   calibrated proportions. In the Newton-Raphson path
-#'   (\code{method = "nr"}), weights are still re-meaned after each clamp
-#'   cycle. The parameter is retained in both function signatures for backward
-#'   compatibility.
+#'   calibrated proportions. In the Newton-Raphson path (\code{method = "nr"}),
+#'   this parameter is also a no-op: the NR solver manages weights internally
+#'   and does not re-mean. The parameter is retained for backward compatibility.
 #' @param accelerate Logical, default FALSE. If TRUE, replaces the standard
 #'   Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan
 #'   and Roland 2008), using Cauchy-Barzilai-Borwein extrapolation steps.
@@ -420,26 +419,16 @@ harvest = function(
 
   # NR calibration bypass: skip variable selection and IPF entirely.
   if(method == "nr") {
+    # Pass max_weight directly to nr_calibrate.
+    # When max_weight=Inf: full K×K Newton-Raphson path; converges in 10-20 iters.
+    # When max_weight<Inf: sequential IPF with inline clamping; needs the same
+    # iteration budget as do_rake, so pass max_iterations.
+    nr_max_iter = if (is.finite(max_weight)) max_iterations else 50L
     weights = nr_calibrate(data, target, weights,
-                           max_iter = max_iterations,
-                           tol = 1e-8,
-                           verbose = isTRUE(verbose > 0))
-    # Post-NR clamping loop: clamp and re-calibrate up to 5 times to restore
-    # marginal constraints after clamping, then apply a final hard clamp.
-    for(.clamp_pass in seq_len(5)) {
-      if(max(weights) <= max_weight + 1e-4) break
-      weights = clamp_weights_top(weights, max_weight)
-      if(enforce_mean) weights = weights / (sum(weights) / length(weights))
-      weights = nr_calibrate(data, target, weights,
-                             max_iter = 20, tol = 1e-8, verbose = FALSE)
-    }
-    # Hard clamp: guarantee max_weight is respected regardless of NR overshoot.
-    # Skip enforce_mean here — re-meaning after this point would push weights
-    # above max_weight again when the dataset structurally requires weights > max_weight
-    # to satisfy marginals.
-    if(max(weights) > max_weight + 1e-4) {
-      weights = clamp_weights_top(weights, max_weight)
-    }
+                           max_iter   = nr_max_iter,
+                           tol        = 1e-8,
+                           verbose    = isTRUE(verbose > 0),
+                           max_weight = max_weight)
     if(!is.null(weight_column) && !attach_weights) {
       message("Note: 'weight_column' specified even though ",
               "'attach_weights=FALSE'. Weights being returned as vector rather ",

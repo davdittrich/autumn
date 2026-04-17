@@ -1,5 +1,10 @@
 # autumn (development)
 
+* `harvest()` with `method = "nr"` now respects `max_weight` natively via
+  sequential IPF with inline clamping. Previously, `method = "nr"` applied a
+  post-hoc hard clamp that displaced calibrated marginals. The new bounded path
+  uses the same iteration budget as the IPF path (`max_iterations`).
+
 * `do_rake()` now uses bounded in-loop redistribution (water-filling) when
   `max_weight` is finite. Per-cell calibration targets are now satisfied
   simultaneously with the weight cap, fixing a correctness bug where the
