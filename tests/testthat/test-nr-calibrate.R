@@ -248,7 +248,11 @@ test_that("nr_calibrate bounded Phase 1 SQUAREM converges on ns_target (max_weig
                                     levels = names(ns_target[[v]])),
                              result_rake)
     expect_true(
-      max(abs(pct_nr[names(ns_target[[v]])] - pct_rake)) < 0.03,
+      max(abs(pct_nr[names(ns_target[[v]])] - ns_target[[v]])) < 0.10,
+      label = paste0("Phase1: marginals within 0.10 of target for ", v)
+    )
+    expect_true(
+      max(abs(pct_nr[names(ns_target[[v]])] - pct_rake[names(ns_target[[v]])])) < 0.03,
       label = paste0("Phase1: marginals within 0.03 of rake for ", v)
     )
   }

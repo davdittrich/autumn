@@ -172,12 +172,16 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
   # Gauss-Seidel: each cell reads weights modified by all prior cells in this sweep.
   wf_pass = function(w) {
     for (i_v in seq_len(V)) {
-      v   = vars[i_v]; off = offsets[i_v]; kv = K_v[i_v]
+      v   = vars[i_v]
+      off = offsets[i_v]
+      kv  = K_v[i_v]
       for (k in seq_len(kv)) {
         cell = cache[[v]]$cell_rows[[k]]
         if (!length(cell)) next
         T_abs  = T_k[off + k]
-        wc     = w[cell]; free = seq_along(wc); cm = 0
+        wc     = w[cell]
+        if (T_abs <= 0) { wc[] = 0; w[cell] = wc; next }
+        free = seq_along(wc); cm = 0
         for (.i in seq_len(length(wc) + 1L)) {
           S = sum(wc[free])
           if (S <= .Machine$double.eps || T_abs - cm <= 0) break
