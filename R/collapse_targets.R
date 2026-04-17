@@ -130,8 +130,7 @@ collapse_targets = function(data, target, max_weight, collapse_vars = NULL) {
           dist_val = abs(props[[j_name]] - props[[k_name]])
         } else {
           j_name   = survivors[which.min(dists)]
-          j_rows_f = which(data_out[[v]] == j_name)
-          dist_val = cell_profile_distance(data_out, k_rows, j_rows_f, av)
+          dist_val = dists[[j_name]]
         }
       }
 
