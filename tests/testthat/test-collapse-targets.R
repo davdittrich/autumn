@@ -205,3 +205,90 @@ test_that("collapse_targets: warning emitted per merge", {
     "auto_collapse"
   )
 })
+
+# ── ordered fixture ───────────────────────────────────────────────────────────
+# 11-row data: age groups 18-24=1, 25-34=5, 35-44=5
+# 18-24 is sparse → should merge into 25-34 (adjacent), NOT 35-44
+mk_ord = function() {
+  list(
+    data   = data.frame(
+      age = factor(
+        c("18-24",
+          "25-34","25-34","25-34","25-34","25-34",
+          "35-44","35-44","35-44","35-44","35-44"),
+        levels  = c("18-24","25-34","35-44"),
+        ordered = TRUE
+      ),
+      inc = c(22, 30,31,29,28,32, 50,51,49,52,48),
+      stringsAsFactors = FALSE
+    ),
+    target = list(
+      age = c("18-24" = 0.10, "25-34" = 0.40, "35-44" = 0.50)
+    )
+  )
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+test_that("ordered: sparse first level merges into second (adjacent only)", {
+  f = mk_ord()
+  # n=11, p_18-24=0.10, max_weight=5: cap_floor=ceiling(11*0.1/5)=1; min_abs=3; threshold=3
+  # 18-24 has 1 row → collapse
+  # Adjacent to 18-24: only 25-34 (35-44 is two steps away)
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target,
+                              max_weight   = 5,
+                              collapse_vars = "inc")
+  )
+  expect_equal(names(result$target$age), c("25-34", "35-44"))
+  expect_equal(unname(result$target$age["25-34"]), 0.50)
+})
+
+test_that("ordered: merges into adjacent even when non-adjacent would be more similar", {
+  f = mk_ord()
+  # 18-24 income=22; adjacency forces merge into 25-34 only (not 35-44)
+  result = suppressWarnings(
+    autumn:::collapse_targets(f$data, f$target, max_weight = 5, collapse_vars = "inc")
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(cl$from, "18-24")
+  expect_equal(cl$into, "25-34")
+})
+
+test_that("ordered: sparse last level merges into second-to-last", {
+  d = data.frame(
+    age = factor(
+      c("18-24","18-24","18-24","18-24","18-24",
+        "25-34","25-34","25-34","25-34","25-34",
+        "35-44"),
+      levels = c("18-24","25-34","35-44"), ordered = TRUE
+    ),
+    stringsAsFactors = FALSE
+  )
+  tgt = list(age = c("18-24"=0.40,"25-34"=0.40,"35-44"=0.20))
+  # 35-44 has 1 row; adjacent is only 25-34
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(cl$from, "35-44")
+  expect_equal(cl$into, "25-34")
+})
+
+test_that("ordered: zero-respondent level uses proportion fallback within adjacents", {
+  d = data.frame(
+    age = factor(
+      c("25-34","25-34","25-34","25-34","25-34",
+        "35-44","35-44","35-44","35-44","35-44"),
+      levels = c("18-24","25-34","35-44"), ordered = TRUE
+    ),
+    stringsAsFactors = FALSE
+  )
+  tgt = list(age = c("18-24"=0.10,"25-34"=0.45,"35-44"=0.45))
+  # 18-24 has 0 rows → proportion fallback among adjacents: only 25-34
+  result = suppressWarnings(
+    autumn:::collapse_targets(d, tgt, max_weight = 5)
+  )
+  cl = attr(result, "collapsed_levels")
+  expect_equal(cl$from, "18-24")
+  expect_equal(cl$into, "25-34")
+})
