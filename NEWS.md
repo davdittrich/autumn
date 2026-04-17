@@ -11,6 +11,12 @@
   previous post-hoc hard clamp left marginal proportions displaced from
   targets.
 
+* `harvest()` with `method = "nr"` and finite `max_weight` now uses
+  SQUAREM-accelerated water-filling IPF (Phase 1) with per-cell bisection
+  fallback (Phase 2). Converges on high-imbalance tight-bound conditions
+  that previously non-converged silently. The effective iteration budget
+  for the bounded path is up to `2 × max_iterations`.
+
 # autumn 0.2.0
 
 ## Breaking Changes

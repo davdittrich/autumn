@@ -57,7 +57,10 @@ The default is 1,000. Note that the total number of iterations may exceed
 this number if after raking, additional variables display imbalance.
 Defaults in \code{\link[anesrake]{anesrake}} and \code{\link[mipfp]{Ipfp}}
 are 1,000. Default in \code{\link[survey]{rake}} is 10, but with
-considerably looser convergence critria.}
+considerably looser convergence critria. For \code{method = "nr"} with
+finite \code{max_weight}, the effective iteration budget for the bounded
+path is up to \code{2 x max_iterations} (Phase 1 SQUAREM + Phase 2
+bisection fallback).}
 
 \item{select_params}{A named vector of variable selection parameters. Which
 names to supply depends on the variable selection function. Parameters
@@ -143,11 +146,9 @@ hundreds of iterations. Most users should leave this at the default FALSE.}
       imbalance severity, versus 100--500 for IPF on severely skewed data.
       \strong{This is the case where \code{method = "nr"} is faster.}
     \item \code{max_weight < Inf} (bounded, including the default 5):
-      sequential IPF with inline per-step clamping — the same algorithm as
-      \code{method = "rake"} but without variable-selection skipping.
-      \strong{Not faster than rake}; may be marginally slower.  Produces
-      slightly different weights because it uses multiply-then-clamp rather
-      than rake's per-cell water-filling.
+      SQUAREM-accelerated water-filling IPF (Phase 1) with per-cell
+      bisection fallback (Phase 2). Converges on high-imbalance
+      tight-bound conditions that previously non-converged silently.
   }
 
   Switching the default would be a breaking change for existing analyses, so
