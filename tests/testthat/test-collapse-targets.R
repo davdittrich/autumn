@@ -460,3 +460,18 @@ test_that("harvest auto_collapse=TRUE: attach_weights=FALSE returns weight vecto
   expect_type(w, "double")
   expect_length(w, 6L)
 })
+
+test_that("harvest auto_collapse=TRUE method=nr: weights produced and original names", {
+  f = mk_unord()
+  result = suppressWarnings(
+    harvest(f$data, f$target,
+            auto_collapse  = TRUE,
+            method         = "nr",
+            max_weight     = Inf,
+            attach_weights = TRUE)
+  )
+  expect_s3_class(result, "data.frame")
+  expect_equal(sort(unique(result$grp)), c("A", "B"))
+  expect_true(!is.null(attr(result, "collapsed_levels")))
+})
+
