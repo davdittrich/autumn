@@ -270,7 +270,7 @@ test_that("nr_calibrate bounded Phase 2 bisection achieves per-cell precision", 
   for (k in seq_along(tgt_c$cat)) {
     cell_k = which(idx == k)
     if (!length(cell_k)) next
-    expect_true(abs(sum(result_c[cell_k]) - T_abs[k]) < 1e-6,
+    expect_true(abs(sum(result_c[cell_k]) - T_abs[k]) < 1e-8,
                 label = paste0("bisect exactness for cell ", k))
   }
 })
