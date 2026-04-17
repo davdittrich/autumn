@@ -1,18 +1,24 @@
 Package: autumn
 Version: 0.2.0
 Title: Fast, Modern, and Tidy-Friendly Iterative Raking
-Description: autumn performs iterative raking to calculate weights for survey 
-  data. It is a modern replacement for anesrake. Like anesrake, it implements 
-  the methods described in DeBell and Krosnick (2009). Unlike anesrake, it is 
-  ready for a tidy workflow. It also requires no external dependencies, runs
-  faster, works with a wider variety of input formats, and has better error 
-  handling and messaging.
-Authors@R: person("Aaron", "Rudkin", 
-                  email = "rudkin@ucla.edu", 
-                  role = c("aut", "cre"))
+Description: Performs iterative proportional fitting (raking) to generate
+    calibration weights for survey data. Implements DeBell and Krosnick (2009)
+    iterative raking, Newton-Raphson calibration for severely imbalanced
+    unbounded problems, SQUAREM-accelerated iterative proportional fitting,
+    bounded water-filling redistribution (inline weight-cap enforcement without
+    marginal displacement), automatic sparse-cell collapse with nearest-neighbour
+    merging, outcome-aware design effect estimation via Henry and Valliant (2015),
+    and a tidy-compatible interface. Forked from aaronrudkin/autumn.
+Authors@R: c(
+    person("Dennis", "A. V. Dittrich",
+           email = "davdittrich@gmail.com",
+           role = c("aut", "cre")),
+    person("Aaron", "Rudkin",
+           role = "aut",
+           comment = "Original author of aaronrudkin/autumn"))
 License: MIT + file LICENSE
-URL: https://github.com/aaronrudkin/autumn/
-BugReports: https://github.com/aaronrudkin/autumn/issues
+URL: https://github.com/davdittrich/autumn/
+BugReports: https://github.com/davdittrich/autumn/issues
 Encoding: UTF-8
 LazyData: true
 ByteCompile: true
@@ -22,4 +28,6 @@ Imports:
   Matrix
 Suggests:
   testthat,
-  anesrake
+  anesrake,
+  bench,
+  knitr
