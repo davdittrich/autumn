@@ -46,3 +46,41 @@ test_that("collapse_threshold: max_weight=0 produces Inf cap_floor (always colla
   # is @keywords internal and relies on harvest() to validate max_weight > 0.
   expect_true(autumn:::collapse_threshold(999L, 0.5, 100L, 0))
 })
+
+test_that("cell_profile_distance: numeric column standardised mean difference", {
+  d = data.frame(x = c(1, 2, 3, 7, 8, 9), stringsAsFactors = FALSE)
+  # k=1:3 mean=2; j=4:6 mean=8; pooled sd of all 6 values
+  sp = sd(c(1, 2, 3, 7, 8, 9))
+  expected = abs(2 - 8) / sp
+  result = autumn:::cell_profile_distance(d, 1:3, 4:6, "x")
+  expect_equal(result, expected, tolerance = 1e-10)
+})
+
+test_that("cell_profile_distance: factor column total variation distance", {
+  d = data.frame(cat = c("A","A","B", "B","B","B"), stringsAsFactors = FALSE)
+  # k=1:3: A=2/3, B=1/3; j=4:6: A=0, B=1
+  # TVD = (|2/3-0| + |1/3-1|) / 2 = 2/3
+  result = autumn:::cell_profile_distance(d, 1:3, 4:6, "cat")
+  expect_equal(result, 2/3, tolerance = 1e-10)
+})
+
+test_that("cell_profile_distance: multiple columns averaged unweighted", {
+  d = data.frame(
+    x = c(1, 1, 1, 5, 5, 5),
+    y = c(0, 0, 0, 0, 0, 0),   # zero variance: contributes 0 to distance
+    stringsAsFactors = FALSE
+  )
+  r_x    = autumn:::cell_profile_distance(d, 1:3, 4:6, "x")
+  r_both = autumn:::cell_profile_distance(d, 1:3, 4:6, c("x", "y"))
+  expect_equal(r_both, r_x / 2, tolerance = 1e-10)
+})
+
+test_that("cell_profile_distance: empty k_rows returns Inf", {
+  d = data.frame(x = 1:6, stringsAsFactors = FALSE)
+  expect_equal(autumn:::cell_profile_distance(d, integer(0), 4:6, "x"), Inf)
+})
+
+test_that("cell_profile_distance: empty j_rows returns Inf", {
+  d = data.frame(x = 1:6, stringsAsFactors = FALSE)
+  expect_equal(autumn:::cell_profile_distance(d, 1:3, integer(0), "x"), Inf)
+})
