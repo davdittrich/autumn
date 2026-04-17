@@ -270,7 +270,19 @@ nr_calibrate = function(data, target, initial_weights = rep(1, nrow(data)),
         }
       }
     }
-    # Non-convergence warning (only when Phase 1+2 both failed)
+    # Recompute gradient with post-update weights. max_g in the loop is pre-update
+    # (correct for the early-exit convergence check), but stale as a post-loop
+    # non-convergence test: the final bisection pass may have converged even though
+    # max_g computed before that pass was above tolerance. Also handles max_iter = 0.
+    max_g = 0
+    for (i_v in seq_len(V)) {
+      v   = vars[i_v]; off = offsets[i_v]; kv = K_v[i_v]
+      for (k in seq_len(kv)) {
+        cell = cache[[v]]$cell_rows[[k]]
+        if (!length(cell)) next
+        max_g = max(max_g, abs(sum(w[cell]) - T_k[off + k]))
+      }
+    }
     if (max_g >= tol * total_d) {
       warning("nr_calibrate bounded: did not converge after Phase 1 (SQUAREM) and Phase 2 (bisection). Returning best-effort weights.")
     }
