@@ -1,204 +1,178 @@
+---
+output: github_document
+---
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
+
+
 # autumn: Fast, Modern, and Tidy Raking <img src="man/figures/autumn.png" align="right" width="120" />
 
-> *“And as to me, I know nothing else but miracles”* - Walt Whitman,
-> probably talking about this package.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[![Travis-CI build
-status](https://travis-ci.org/r-lib/pkgdown.svg?branch=master)](https://travis-ci.org/aaronrudkin/autumn)
-[![Coverage
-Status](https://coveralls.io/repos/github/aaronrudkin/autumn/badge.svg?branch=master)](https://coveralls.io/github/aaronrudkin/autumn?branch=master)
-
-Iterative proportional fitting (raking) is a straightforward and fast
-way to generate weights which ensure a dataset reflects known target
-marginal distributions: put simply, survey professionals use raking to
-ensure that samples represent the population they are drawn from.
-
-Existing `R` implementations of raking are frustrating to use, have
-antiquated syntax, require external dependencies or compilation, have
-inadequate documentation, generate difficult to understand errors, run
-slowly, and don’t support “tidy” workflows. **autumn** is a modern
-package built from the ground up to fix these problems.
+**autumn** calibrates survey data via iterative proportional fitting (raking), producing weights that align a sample's marginal distributions with known population targets. This fork extends the original [aaronrudkin/autumn](https://github.com/aaronrudkin/autumn) with Newton-Raphson calibration, SQUAREM acceleration, automatic sparse-cell collapse, bounded water-filling redistribution, and an outcome-aware design-effect estimator.
 
 ## Installation
 
-**autumn** will be submitted to CRAN in ~January 2020~ June 2020. In the meantime,
-you can install it using the following command:
 
 ``` r
-# Install GitHub version:
-devtools::install_github("aaronrudkin/autumn")
+# Install from GitHub:
+remotes::install_github("davdittrich/autumn")
 ```
 
-## Usage
+## Quick Start
 
-The workhorse function of **autumn** is `harvest()`, which takes at
-minimum two arguments: 1) a data.frame (or tibble) containing data; 2)
-target proportions. At its simplest, a call to `harvest()` works as
-follows:
+`harvest()` takes a data frame and a target and returns the data frame with a `weights` column. Default parameters enforce a weight cap of 5 and mean 1.
+
 
 ``` r
-# Standard R function call
-harvest(respondent_data, ns_target)
-
-# Using `magrittr`'s pipe operator
-respondent_data %>% harvest(ns_target)
+weighted_data <- harvest(respondent_data, ns_target)
 ```
 
-It just works\! This function call will iteratively weight observations
-to match the target proportions and add a column `weights` to the data
-frame (it is also possible to rename the column or return the weights as
-a vector). Default parameters are helpful and sane: weights are
-guaranteed mean 1 and maximum 5.
+Two target formats are supported.
 
-### Specifying a Target
+**Named-vector list:**
 
-The main challenge when running `harvest()` is to correctly specify
-target proportions. Two formats are supported: 1) a list of named
-vectors; 2) a data.frame or tibble.
-
-When supplying targets as a list of named vectors, it looks like this:
 
 ``` r
 list(
-  gender = c(Male = 0.4829, Female = 0.5171), 
-  region = c(Midwest = 0.2086, 
-             Northeast = 0.1764, 
-             South = 0.3775, 
-             West = 0.2374)
+  gender = c(Male = 0.4829, Female = 0.5171),
+  region = c(Midwest = 0.2086, Northeast = 0.1764,
+             South   = 0.3775, West     = 0.2374)
 )
 ```
 
-Each list element should match the name of a single variable in the
-data, and each vector name should match a value the variable can take.
-The numeric values should be positive and sum to 1 within each variable.
+**Three-column data frame** (columns `variable`, `level`, `proportion`):
 
-When supplying data as a data.frame or tibble, the data.frame should
-have three columns (by default `harvest()` looks for columns named
-“variable”, “level”, and “proportion” – although these names can be
-overridden):
 
-``` r
-target_tbl
-#> # A tibble: 6 x 3
-#>   variable level     proportion
-#>   <chr>    <chr>          <dbl>
-#> 1 gender   Male           0.483
-#> 2 gender   Female         0.517
-#> 3 region   Midwest        0.209
-#> 4 region   Northeast      0.176
-#> 5 region   South          0.378
-#> 6 region   West           0.237
+
+```
+  variable    level proportion
+1   gender     Male     0.4829
+2   gender   Female     0.5171
+3   region  Midwest     0.2086
+4   region Northeast     0.1764
+5   region    South     0.3775
+6   region     West     0.2374
 ```
 
-### Advanced Usage
+## Key Capabilities
 
-**autumn** supports a variety of advanced features including:
+### Auto-collapse of sparse or missing cells
 
-  - Supplying starting weights
-  - Adjusting maximum weights
-  - Adjusting convergence and iteration criteria
-  - Adjusting variable selection and error calculation criteria
-  - Handling missing data appropriately
-  - Calculating design effects for produced weights
-  - Summarizing raking results
+Calibration fails when a target level has zero respondents, and produces extreme weights when a cell is too small to satisfy its target under the weight cap. `auto_collapse = TRUE` detects both conditions and merges each sparse level into its most similar surviving level before calibration begins.
 
-Interested in doing something fancy? Check out our R vignettes for more
-details: TODO VIGNETTES GO HERE
+The merge threshold for level $k$ is $\max\!\left(3,\ \lfloor n \cdot 0.002 \rfloor,\ \lceil n p_k / w_{\max} \rceil\right)$. The third term is the minimum count at which the cell's expected weight stays at or below `max_weight`; the second prevents collapsing well-calibrated sparse cells when the cap is loose.
 
-## Speed 🚀
 
-How fast is **autumn**? Fast.
+``` r
+# One level of 'region' absent from the sample
+sparse_data <- respondent_data[respondent_data$region != "Midwest", ]
 
-Below, we present results of three different benchmark scenarios, each
-using real data (the first two benchmarks use the `respondent_data` and
-`ns_target` datasets included with **autumn**). All of these benchmarks
-use identical data and default parameterizations, and were run on a low
-power 2016-vintage personal computer. The larger the the dataset and the
-more complicated the rake, the more you benefit from using **autumn**.
-Customizing convergence criteria to allow for earlier termination can
-result in further speed improvements over existing software.
+# Without auto_collapse: stop() with "missing levels" error
+# With auto_collapse: Midwest absorbed into nearest neighbour, weights produced
+suppressWarnings(
+  weighted_sparse <- harvest(sparse_data, ns_target, auto_collapse = TRUE)
+)
+attr(weighted_sparse, "collapsed_levels")
+#>   variable    from  into n_from p_from distance
+#>      <chr>   <chr> <chr>  <int>  <dbl>    <dbl>
+#> 1   region Midwest  West      0 0.2086        0
+```
 
-*Note:*
+For ordered factors, merging is restricted to immediately adjacent surviving levels. Custom auxiliary columns for similarity scoring are supplied via `collapse_vars`.
 
-### Small scale
+### Newton-Raphson calibration
 
-This benchmark generates weights for a dataset of 6,691 observations,
-raking on 10 variables. Compared with the implementation in
-**anesrake**, **autumn** is about *67% faster* and allocates one third
-less memory. Compared with the implementation in **survey**, **autumn**
-is about *4X as fast* and allocates 20% more memory.
+`method = "nr"` solves the calibration system via Newton-Raphson rather than Gauss-Seidel IPF. The effective path depends on `max_weight`:
 
-    #> # A tibble: 3 x 6
-    #>   expression      min   median `itr/sec` mem_alloc `gc/sec`
-    #>   <chr>      <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-    #> 1 autumn        1.35s    1.73s     0.572  738.35MB    3.01 
-    #> 2 anesrake      2.46s    2.89s     0.315    1.11GB    2.42 
-    #> 3 survey        4.57s    6.76s     0.148  614.84MB    0.866
+- **Unbounded** (`max_weight = Inf`): a single $K \times K$ linear solve per Newton step converges in 10–20 iterations versus 100–500 for IPF. Use this path when data are severely imbalanced and no weight cap is required.
+- **Bounded** (`max_weight < Inf`, including the default of 5): SQUAREM-accelerated water-filling IPF (Phase 1) with per-cell bisection fallback (Phase 2). This path is correct where the previous post-hoc hard clamp was not: weights satisfy the cap and the calibration targets simultaneously.
 
-### Medium scale
 
-Consider a raking task that is more difficult to converge: the same
-dataset (6,691 observations) raked on 17 variables. The extra variables
-involve interactions which greatly complicate convergence. **autumn** is
-*three times as fast* as **anesrake** and uses almost two thirds less
-memory (**survey** will not complete the rake):
+``` r
+# Unbounded NR — faster on severely imbalanced problems
+harvest(respondent_data, ns_target, method = "nr", max_weight = Inf)
 
-    #> # A tibble: 2 x 6
-    #>   expression      min   median `itr/sec` mem_alloc `gc/sec`
-    #>   <chr>      <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-    #> 1 autumn         2.3s    3.02s    0.327     1.22GB     6.58
-    #> 2 anesrake      8.41s    9.99s    0.0945    3.11GB     4.77
+# Bounded NR — correct per-cell water-filling (default max_weight = 5)
+harvest(respondent_data, ns_target, method = "nr")
+```
 
-### Large scale
+### SQUAREM-accelerated IPF
 
-Finally, consider an extremely resource intensive problem: raking a much
-larger dataset of 108,660 observations on 17 variables. In this
-scenario, **autumn** is 11 times faster and uses 92% less memory. (This
-benchmark is limited to 10 iterations):
+`accelerate = TRUE` applies the Varadhan-Roland (2008) SqS3 acceleration scheme to standard iterative proportional fitting. On problems where IPF converges slowly, SQUAREM reduces iteration count by an order of magnitude.
 
-    #> # A tibble: 2 x 6
-    #>   expression      min   median `itr/sec` mem_alloc `gc/sec`
-    #>   <chr>      <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-    #> 1 autumn        47.1s    48.8s   0.0200     20.8GB     2.44
-    #> 2 anesrake      8.15m     8.8m   0.00189   238.6GB     2.52
 
-## Why is the package called “autumn”?
+``` r
+harvest(respondent_data, ns_target, accelerate = TRUE)
+```
+
+### Outcome-aware design effects
+
+`design_effect()` now supports the Henry and Valliant (2015) estimator when outcome, data, and target are all supplied:
+
+$$\hat{d}_{HV} = (1 - \hat{R}^2_w)\,\hat{d}_K$$
+
+where $\hat{R}^2_w$ is the weighted $R^2$ from regressing the outcome on dummy-coded calibration auxiliaries and $\hat{d}_K$ is the Kish (1992) design effect. When the calibration auxiliaries strongly predict the outcome, the design effect approaches zero — correctly reflecting the variance reduction from calibration.
+
+
+``` r
+weighted_data <- harvest(respondent_data, ns_target)
+# Kish estimator (weights only)
+design_effect(weighted_data$weights)
+
+# Henry-Valliant estimator (outcome-aware).
+# respondent_data has no continuous outcome; use a binary indicator.
+male_indicator <- as.integer(respondent_data$gender == "Male")
+design_effect(weighted_data$weights,
+              outcome = male_indicator,
+              data    = respondent_data,
+              target  = ns_target)
+```
+
+`design_effect()` with only weights now emits a warning and falls back to Kish when the Spencer (2000) estimator would otherwise be invoked; Spencer assumes design weights (inverse inclusion probabilities), which calibration weights are not.
+
+### Additional controls
+
+- `add_na_proportion`: inject an `___NA` category at the observed missingness rate, preventing listwise deletion from distorting calibration
+- `adaptive_order`: reorder calibration variables each iteration by current error magnitude
+- `convergence`: named vector controlling `"pct"`, `"absolute"`, `"single_weight"`, and `"time"` stopping rules
+- `diagnose_weights()`: per-variable calibration summary with marginal deviations
+
+## Performance
+
+
+
+On the included 6,691-respondent dataset raked on 10 variables, autumn's median runtime is 9.3× faster than anesrake and allocates 91% less memory:
+
+
+```
+#>   expression         median   mem_alloc
+#> 1     autumn  1.23741487303  1213540456
+#> 2   anesrake 11.53836131096 13973889480
+```
+
+On a harder problem — the same dataset raked on 17 variables — autumn is 9.3× faster and allocates substantially less memory:
+
+
+```
+#>   expression         median   mem_alloc
+#> 1     autumn  1.26821657846  1216635320
+#> 2   anesrake 11.76016070106 13988961664
+```
+
+Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations. `survey::rake` does not complete the 17-variable rake under default parameters and is excluded from that benchmark.
+
+## Why "autumn"?
 
 <p align="center">
-
-<img src="man/figures/raking_leaves.jpg" align="center" width="480" />
-
+  <img src="man/figures/raking_leaves.jpg" align="center" width="480" />
 </p>
 
-## Authorship and Funding
+## Authorship
 
-**autumn** is written and maintained by [Aaron
-Rudkin](https://github.com/aaronrudkin/). Target proportions in the
-included `ns_target` data were developed by [Alex
-Rossell-Hayes](https://github.com/rossellhayes).
+**autumn** is maintained by [Dennis A. V. Dittrich](https://github.com/davdittrich/). This package is a fork of the original **autumn** by [Aaron Rudkin](https://github.com/aaronrudkin/); the core IPF implementation and the `ns_target` dataset originate from that work. Target proportions in `ns_target` were developed by [Alex Rossell-Hayes](https://github.com/rossellhayes).
 
-If you have any comments, issues, or concerns, please [open a GitHub
-issue](https://github.com/aaronrudkin/autumn/issues). Contributions are
-welcome. Please see our [Contributor Code of
-Conduct](.github/CODE_OF_CONDUCT.md) for details.
+Bug reports and contributions are welcome at the [GitHub issue tracker](https://github.com/davdittrich/autumn/issues).
 
-**autumn** was developed in conjunction with [Democracy Fund + UCLA
-Nationscape](https://www.voterstudygroup.org/nationscape), one of the
-largest public opinion surveys ever conducted. UCLA’s Nationscape team
-are: [Tyler Reny](http://tylerreny.github.io/), [Alex
-Rossell-Hayes](http://alexander.rossellhayes.com/), [Aaron
-Rudkin](https://github.com/aaronrudkin/), [Chris
-Tausanovitch](http://www.ctausanovitch.com/), and [Lynn
-Vavreck](https://www.lynnvavreck.com/). Funding for this project was
-provided by [Democracy Fund](https://www.democracyfund.org/), part of
-the [Omidyar Group](http://omidyargroup.com/).
-
-![UCLA + Democracy Fund](man/figures/logo_ucla_demfund.png
-"UCLA + Democracy Fund")
-
-Package hex logo adapted from art by
-[Freepik](https://www.flaticon.com/authors/Freepik) from
-[flaticon.com](https://www.flaticon.com/)
+Package hex logo adapted from art by [Freepik](https://www.flaticon.com/authors/Freepik) from [flaticon.com](https://www.flaticon.com/).
