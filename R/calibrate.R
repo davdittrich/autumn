@@ -79,9 +79,10 @@ calibrate_weights <- function(X, d, targets_adj,
   }
 
   # ── Newton loop ─────────────────────────────────────────────────────────────
-  lambda      <- rep(0, K)
-  best_lambda <- lambda
-  best_err    <- Inf
+  lambda         <- rep(0, K)
+  best_lambda    <- lambda
+  best_err       <- Inf
+  no_step_count  <- 0L
 
   for (iter in seq_len(max_iter)) {
     w   <- compute_w(lambda)
@@ -113,7 +114,10 @@ calibrate_weights <- function(X, d, targets_adj,
       if (max_eta > 4) delta <- delta * 4 / max_eta
     }
 
-    # Step-halving: reject step if no improvement found after 20 halvings
+    # Step-halving: reject step if no improvement found after 20 halvings.
+    # If step-halving fails, lambda is unchanged, making the next iteration
+    # compute identical w/g/H/delta and fail again. Break after 2 consecutive
+    # failures to avoid burning max_iter iterations on identical work.
     step     <- 1.0
     improved <- FALSE
     g_norm   <- sqrt(sum(g^2))
@@ -127,7 +131,13 @@ calibrate_weights <- function(X, d, targets_adj,
       }
       step <- step / 2
     }
-    # if !improved: lambda unchanged (step rejected)
+
+    if (!improved) {
+      no_step_count <- no_step_count + 1L
+      if (no_step_count >= 2L) break
+    } else {
+      no_step_count <- 0L
+    }
 
     # Update best AFTER lambda is finalised for this iteration
     if (err < best_err) {
