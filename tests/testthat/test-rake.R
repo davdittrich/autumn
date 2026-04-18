@@ -387,3 +387,31 @@ test_that("enforce_mean is inert in IPF path after bounded redistribution", {
   expect_equal(r_true, r_false, tolerance = 1e-9,
                label = "enforce_mean has no effect in IPF path after bounded redistribution")
 })
+
+test_that("SQUAREM converges on ns_target within 100 super-steps", {
+  # Regression test for SQUAREM pct-criterion omission:
+  # Without pct, SQUAREM only checks absolute < 1e-4 and runs all 1000 max_iterations.
+  # With alpha≈-1 on ns_target, each super-step ≈ 3 IPF passes (no acceleration).
+  # 100 super-steps = 300 IPF passes > 250 needed; should be sufficient with pct fix.
+  # Without fix: 100 super-steps insufficient, calibration accuracy > 1e-3.
+  result_acc <- do_rake(
+    respondent_data, ns_target,
+    weights        = rep(1, nrow(respondent_data)),
+    max_weight     = 5,
+    max_iterations = 100,
+    convergence    = c(pct = 0.01, absolute = 1e-4),
+    accelerate     = TRUE,
+    verbose        = FALSE
+  )
+
+  for(v in names(ns_target)) {
+    pct <- weighted_pct(factor(respondent_data[[v]],
+                               levels = names(ns_target[[v]])),
+                        result_acc)
+    expect_true(
+      max(abs(pct - ns_target[[v]])) < 1e-3,
+      label = paste0("SQUAREM calibration accuracy for '", v,
+                     "' within max_iterations=100")
+    )
+  }
+})
