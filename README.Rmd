@@ -11,6 +11,7 @@ knitr::opts_chunk$set(
   fig.path = "README-"
 )
 library(autumn)
+library(bench)
 bm <- readRDS("tools/benchmark_results.rds")
 ```
 
@@ -155,12 +156,14 @@ mem_small_pct <- round(
   (as.numeric(bm$small$mem_alloc[2]) - as.numeric(bm$small$mem_alloc[1])) /
     as.numeric(bm$small$mem_alloc[2]) * 100
 )
-# Methods benchmark: extract medians by expression label for inline prose
+# Methods benchmark: extract medians by expression label for inline prose.
+# Ratios are expressed as (method / rake_bounded) so values < 1 mean faster
+# than the default and values > 1 mean slower.
 m_med <- setNames(as.numeric(bm$methods$median),
                   as.character(bm$methods$expression))
-squarem_speedup    <- round(m_med["rake_bounded"] / m_med["rake_bounded_squarem"], 1)
-unb_vs_bounded     <- round(m_med["rake_bounded"] / m_med["rake_unbounded"],       1)
-nr_unb_vs_rake_unb <- round(m_med["nr_unbounded"] / m_med["rake_unbounded"],       1)
+unb_vs_bounded     <- round(m_med["rake_bounded"]        / m_med["rake_unbounded"],     1)
+squarem_vs_base    <- round(m_med["rake_bounded_squarem"] / m_med["rake_bounded"],       1)
+nr_unb_vs_rake_unb <- round(m_med["nr_unbounded"]         / m_med["rake_unbounded"],     1)
 ```
 
 ### Comparison with anesrake
@@ -187,11 +190,11 @@ The six parameter combinations cover two axes: bounding (`max_weight` finite vs.
 print(bm$methods[, c("expression", "median", "mem_alloc", "n_itr")])
 ```
 
-Key guidance:
+Key guidance from the results above:
 
-- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this well-conditioned problem — the weight cap forces additional constraint-satisfaction work per iteration. Use it when no cap is needed.
-- **SQUAREM** (`accelerate = TRUE`) reduces bounded-rake runtime by `r squarem_speedup`× by cutting the iteration count. Gains are larger on slowly converging problems.
-- **Unbounded NR** (`method = "nr", max_weight = Inf`) is `r nr_unb_vs_rake_unb`× slower than unbounded rake on this well-conditioned 10-variable problem. NR's advantage emerges on severely imbalanced data (10–20 NR steps versus hundreds of IPF iterations). Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
+- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this dataset and uses 98% less memory — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) is `r squarem_vs_base`× *slower* on this well-conditioned dataset. SQUAREM's per-step overhead (two IPF passes plus a projected step) outweighs its iteration savings when the plain IPF already converges in 250 iterations. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
+- **Unbounded NR** (`method = "nr", max_weight = Inf`) is `r nr_unb_vs_rake_unb`× slower than unbounded rake on this 10-variable problem. NR's advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+. Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
 - **Bounded NR** (`method = "nr"`) is a correctness tool: it satisfies the weight cap and calibration targets simultaneously. The previous post-hoc hard clamp broke calibration; bounded NR does not.
 
 Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations.
