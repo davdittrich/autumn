@@ -443,9 +443,9 @@ harvest = function(
     if (isTRUE(adaptive_order))
       warning('adaptive_order is ignored by method="calibrate" ',
               '(Newton optimises all K variables simultaneously).')
-    if (!is.null(convergence[["time"]]) && !is.na(convergence[["time"]]))
+    if ("time" %in% names(convergence) && !is.na(convergence[["time"]]))
       warning('convergence["time"] is ignored by method="calibrate".')
-    if (!is.null(convergence[["single_weight"]]) &&
+    if ("single_weight" %in% names(convergence) &&
         !is.na(convergence[["single_weight"]]))
       warning('convergence["single_weight"] is ignored by method="calibrate".')
 

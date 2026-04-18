@@ -47,6 +47,12 @@ calibrate_weights <- function(X, d, targets_adj,
   if (bounded) {
     L <- min_weight / d   # lower ratio
     U <- max_weight / d   # upper ratio
+
+    # Shift eta so lambda=0 gives w_i = d_i (not midpoint(min,max)).
+    # Avoids huge initial residual when starting weights deviate far from d.
+    # plogis(eta_offset_i) = (d_i - min_weight) / (max_weight - min_weight).
+    p0 <- pmin(pmax((d - min_weight) / (max_weight - min_weight), 1e-8), 1 - 1e-8)
+    eta_offset <- qlogis(p0)
   }
 
   # ── Weight and Hessian-weight computation ───────────────────────────────────
@@ -57,16 +63,18 @@ calibrate_weights <- function(X, d, targets_adj,
         warning("raking: large lambda magnitude, exp() approaching overflow")
       d * exp(eta)
     } else {
-      d * (L + (U - L) * plogis(eta))
+      d * (L + (U - L) * plogis(eta + eta_offset))
     }
   }
 
   compute_h <- function(w) {
-    # h_i = dw_i/deta_i (Hessian diagonal weight per respondent)
+    # h_i = dw_i/deta_i: the per-respondent Hessian weight.
     if (!bounded) {
-      w   # raking: dw/deta = w
+      w   # raking: w = d*exp(eta), so dw/deta = w
     } else {
-      (w / d - L) * (U - w / d) * d   # logit: (sigma)(1-sigma)(U-L)^2 * d
+      # logit: dw/deta = d*(U-L)*p*(1-p) = (w/d-L)*(U-w/d)*d / (U-L)
+      # Note: naive (w/d-L)*(U-w/d)*d is (U-L) times too large.
+      (w / d - L) * (U - w / d) * d / (U - L)
     }
   }
 
@@ -82,7 +90,9 @@ calibrate_weights <- function(X, d, targets_adj,
     if (err < pct) break
 
     h     <- compute_h(w)
-    H     <- crossprod(X * sqrt(pmax(h, 0)), X * sqrt(pmax(h, 0)))
+    # Divide by n: g uses colMeans scale (O(1)), H must match.
+    # X^T diag(h) X / n gives the correct scaled Hessian for the dual problem.
+    H     <- crossprod(X * sqrt(pmax(h, 0)), X * sqrt(pmax(h, 0))) / n
     ridge <- 1e-6 * mean(diag(H))
     delta <- tryCatch(
       solve(H + ridge * diag(K), g),
@@ -93,11 +103,21 @@ calibrate_weights <- function(X, d, targets_adj,
       }
     )
 
-    # Step-halving: reject step if no improvement found after 10 halvings
+    # For raking: cap step so exp() stays safe.
+    # X %*% delta is the per-respondent eta change. If unbounded, accumulated
+    # lambda causes exp() overflow across iterations. Cap to max |eta| = 4
+    # (exp(4) ≈ 55), preserving Newton direction, ~3x convergence overhead.
+    if (!bounded) {
+      eta_step <- as.vector(X %*% delta)
+      max_eta  <- max(abs(eta_step))
+      if (max_eta > 4) delta <- delta * 4 / max_eta
+    }
+
+    # Step-halving: reject step if no improvement found after 20 halvings
     step     <- 1.0
     improved <- FALSE
     g_norm   <- sqrt(sum(g^2))
-    for (.h in seq_len(10)) {
+    for (.h in seq_len(20)) {
       lambda_cand <- lambda - step * delta
       g_cand      <- colMeans(X * compute_w(lambda_cand)) - targets_adj
       if (sqrt(sum(g_cand^2)) < g_norm) {
@@ -125,5 +145,7 @@ calibrate_weights <- function(X, d, targets_adj,
   }
 
   w_final <- compute_w(best_lambda)
-  w_final / mean(w_final)   # return mean-1 weights
+  w_final <- w_final / mean(w_final)
+  if (bounded) w_final <- pmax(min_weight, pmin(max_weight, w_final))
+  w_final
 }

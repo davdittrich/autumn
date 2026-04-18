@@ -461,12 +461,12 @@ test_that("harvest auto_collapse=TRUE: attach_weights=FALSE returns weight vecto
   expect_length(w, 6L)
 })
 
-test_that("harvest auto_collapse=TRUE method=nr: weights produced and original names", {
+test_that("harvest auto_collapse=TRUE method=calibrate: weights produced and original names", {
   f = mk_unord()
   result = suppressWarnings(
     harvest(f$data, f$target,
             auto_collapse  = TRUE,
-            method         = "nr",
+            method         = "calibrate",
             max_weight     = Inf,
             attach_weights = TRUE)
   )
