@@ -155,7 +155,15 @@ mem_small_pct <- round(
   (as.numeric(bm$small$mem_alloc[2]) - as.numeric(bm$small$mem_alloc[1])) /
     as.numeric(bm$small$mem_alloc[2]) * 100
 )
+# Methods benchmark: extract medians by expression label for inline prose
+m_med <- setNames(as.numeric(bm$methods$median),
+                  as.character(bm$methods$expression))
+squarem_speedup    <- round(m_med["rake_bounded"] / m_med["rake_bounded_squarem"], 1)
+unb_vs_bounded     <- round(m_med["rake_bounded"] / m_med["rake_unbounded"],       1)
+nr_unb_vs_rake_unb <- round(m_med["nr_unbounded"] / m_med["rake_unbounded"],       1)
 ```
+
+### Comparison with anesrake
 
 On the included 6,691-respondent dataset raked on 10 variables, autumn's median runtime is `r ratio_small`× faster than anesrake and allocates `r mem_small_pct`% less memory:
 
@@ -169,7 +177,24 @@ On a harder problem — the same dataset raked on 17 variables — autumn is `r 
 print(bm$medium[, c("expression", "median", "mem_alloc")])
 ```
 
-Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations. `survey::rake` does not complete the 17-variable rake under default parameters and is excluded from that benchmark.
+`survey::rake` does not complete the 17-variable rake under default parameters and is excluded from that benchmark.
+
+### Calibration method comparison
+
+The six parameter combinations cover two axes: bounding (`max_weight` finite vs. `Inf`) and algorithm (`method = "rake"` vs. `"nr"`, and `accelerate`):
+
+```{r bm_methods, echo = FALSE}
+print(bm$methods[, c("expression", "median", "mem_alloc", "n_itr")])
+```
+
+Key guidance:
+
+- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this well-conditioned problem — the weight cap forces additional constraint-satisfaction work per iteration. Use it when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) reduces bounded-rake runtime by `r squarem_speedup`× by cutting the iteration count. Gains are larger on slowly converging problems.
+- **Unbounded NR** (`method = "nr", max_weight = Inf`) is `r nr_unb_vs_rake_unb`× slower than unbounded rake on this well-conditioned 10-variable problem. NR's advantage emerges on severely imbalanced data (10–20 NR steps versus hundreds of IPF iterations). Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
+- **Bounded NR** (`method = "nr"`) is a correctness tool: it satisfies the weight cap and calibration targets simultaneously. The previous post-hoc hard clamp broke calibration; bounded NR does not.
+
+Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations.
 
 ## Why "autumn"?
 
