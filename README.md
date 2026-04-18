@@ -145,7 +145,7 @@ design_effect(weighted_data$weights,
 
 ### Comparison with anesrake
 
-On the included 6,691-respondent dataset raked on 10 variables, autumn's median runtime is 8.8× faster than anesrake and allocates 91% less memory:
+On the included 6,691-respondent dataset raked on 10 variables, autumn's median runtime is 9.1× faster than anesrake and allocates 91% less memory:
 
 
 ```
@@ -153,7 +153,7 @@ On the included 6,691-respondent dataset raked on 10 variables, autumn's median 
 #>   expression   median mem_alloc
 #>   <chr>      <bch:tm> <bch:byt>
 #> 1 autumn        1.28s    1.13GB
-#> 2 anesrake     11.32s   13.01GB
+#> 2 anesrake     11.63s   13.01GB
 ```
 
 On a harder problem — the same dataset raked on 17 variables — autumn is 9.1× faster and allocates substantially less memory:
@@ -163,8 +163,8 @@ On a harder problem — the same dataset raked on 17 variables — autumn is 9.1
 #> # A data frame: 2 × 3
 #>   expression   median mem_alloc
 #>   <chr>      <bch:tm> <bch:byt>
-#> 1 autumn        1.24s    1.13GB
-#> 2 anesrake     11.24s   13.03GB
+#> 1 autumn        1.29s    1.13GB
+#> 2 anesrake     11.69s   13.03GB
 ```
 
 `survey::rake` does not complete the 17-variable rake under default parameters and is excluded from that benchmark.
@@ -178,19 +178,19 @@ The six parameter combinations cover two axes: bounding (`max_weight` finite vs.
 #> # A data frame: 6 × 4
 #>   expression               median mem_alloc n_itr
 #>   <chr>                  <bch:tm> <bch:byt> <int>
-#> 1 rake_bounded               2.3s    1.13GB    10
-#> 2 rake_bounded_squarem      1.35m   68.45GB    10
-#> 3 rake_unbounded          90.31ms    49.3MB    10
-#> 4 rake_unbounded_squarem   19.62s   15.97GB    10
-#> 5 nr_bounded               10.67s   17.89GB    10
-#> 6 nr_unbounded              4.77s    5.08GB    10
+#> 1 rake_bounded              1.26s    1.13GB    10
+#> 2 rake_bounded_squarem      1.88s    1.67GB    10
+#> 3 rake_unbounded          51.48ms    49.3MB    10
+#> 4 rake_unbounded_squarem 155.03ms  142.74MB    10
+#> 5 nr_bounded               10.88s   17.89GB    10
+#> 6 nr_unbounded              3.49s    5.08GB    10
 ```
 
 Key guidance from the results above:
 
-- **Unbounded rake** (`max_weight = Inf`) is 25.4× faster than bounded rake on this dataset and uses 98% less memory — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
-- **SQUAREM** (`accelerate = TRUE`) is 35.3× *slower* on this well-conditioned dataset. SQUAREM's per-step overhead (two IPF passes plus a projected step) outweighs its iteration savings when the plain IPF already converges in 250 iterations. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
-- **Unbounded NR** (`method = "nr", max_weight = Inf`) is 52.8× slower than unbounded rake on this 10-variable problem. NR's advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+. Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
+- **Unbounded rake** (`max_weight = Inf`) is 24.5× faster than bounded rake on this dataset and uses 98% less memory — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) is 1.5× *slower* on this well-conditioned bounded dataset. Both plain IPF and SQUAREM exit via the `pct` convergence criterion within 3–5 passes on this problem, so SQUAREM's iteration savings are minimal; its per-super-step overhead (two IPF passes plus a projected CBB step) determines the net result. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
+- **Unbounded NR** (`method = "nr", max_weight = Inf`) is 67.8× slower than unbounded rake on this 10-variable problem. NR's advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+. Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
 - **Bounded NR** (`method = "nr"`) is a correctness tool: it satisfies the weight cap and calibration targets simultaneously. The previous post-hoc hard clamp broke calibration; bounded NR does not.
 
 Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations.
