@@ -219,10 +219,9 @@
 #'   this number if after raking, additional variables display imbalance.
 #'   Defaults in \code{\link[anesrake]{anesrake}} and \code{\link[mipfp]{Ipfp}}
 #'   are 1,000. Default in \code{\link[survey]{rake}} is 10, but with
-#'   considerably looser convergence critria. For \code{method = "nr"} with
-#'   finite \code{max_weight}, the effective iteration budget for the bounded
-#'   path is up to \code{2 x max_iterations} (Phase 1 SQUAREM + Phase 2
-#'   bisection fallback).
+#'   considerably looser convergence critria. For \code{method = "calibrate"},
+#'   this is the maximum number of Newton steps; convergence typically occurs
+#'   in 10--30 steps.
 #' @param convergence A named vector of convergence parameters. These are
 #'   described below but the defaults are well-tuned for both speed and
 #'   convergence to population marginals.
@@ -273,10 +272,7 @@
 #'   character vectors of column names.
 #' @param enforce_mean Default TRUE. In the IPF path (\code{method = "rake"}),
 #'   bounded redistribution preserves the total weight sum exactly, so this
-#'   parameter is a no-op — re-meaning after redistribution would displace
-#'   calibrated proportions. In the Newton-Raphson path (\code{method = "nr"}),
-#'   this parameter is also a no-op: the NR solver manages weights internally
-#'   and does not re-mean. The parameter is retained for backward compatibility.
+#'   parameter is a no-op. The parameter is retained for backward compatibility.
 #' @param accelerate Logical, default FALSE. If TRUE, replaces the standard
 #'   Gauss-Seidel IPF loop with a SQUAREM SqS3 acceleration scheme (Varadhan
 #'   and Roland 2008), using Cauchy-Barzilai-Borwein extrapolation steps.
@@ -286,28 +282,13 @@
 #'   super-step costs three rake passes rather than one. SQUAREM may help
 #'   only when the \code{pct} criterion is disabled and convergence requires
 #'   hundreds of iterations. Most users should leave this at the default FALSE.
-#' @param method Character, one of \code{"rake"} (default) or \code{"nr"}.
-#'   \code{"rake"} uses standard iterative proportional fitting (IPF).
-#'   \code{"nr"} behaviour depends on \code{max_weight}:
-#'
-#'   \itemize{
-#'     \item \code{max_weight = Inf} (unbounded): full Newton-Raphson with a
-#'       K×K Hessian solve.  Converges in 10--20 iterations regardless of
-#'       imbalance severity, versus 100--500 for IPF on severely skewed data.
-#'       \strong{This is the case where \code{method = "nr"} is faster.}
-#'     \item \code{max_weight < Inf} (bounded, including the default 5):
-#'       SQUAREM-accelerated water-filling IPF (Phase 1) with per-cell
-#'       bisection fallback (Phase 2). Converges on high-imbalance
-#'       tight-bound conditions that previously non-converged silently.
-#'   }
-#'
-#'   Switching the default would be a breaking change for existing analyses, so
-#'   \code{"rake"} remains the default.  Use \code{method = "nr"} when you also
-#'   set \code{max_weight = Inf} and the data are severely imbalanced.
-#'
-#'   When \code{method = "nr"} and \code{select_function} is not the default
-#'   \code{"pct"}, a warning is emitted because NR calibrates all variables
-#'   simultaneously and cannot honour variable-selection logic.
+#' @param method Calibration algorithm. \code{"rake"} (default) uses iterative
+#'   proportional fitting (Gauss-Seidel IPF). \code{"calibrate"} uses
+#'   K-dimensional dual Newton: with \code{max_weight = Inf}, raking distance
+#'   (exponential tilting, weights unbounded above); with
+#'   \code{max_weight < Inf}, logit distance (enforces bounds by construction,
+#'   no post-hoc clamping). \code{method = "nr"} has been removed — use
+#'   \code{method = "calibrate"} instead.
 #' @param auto_collapse Logical, default \code{FALSE}. When \code{TRUE},
 #'   automatically detects and merges calibration target levels that are absent
 #'   from the sample or whose respondent count falls below an adaptive threshold
@@ -366,6 +347,7 @@ harvest = function(
   target,
   start_weights = 1,
   max_weight = 5,
+  min_weight = 0,
   max_iterations = 1000,
   select_params = c(pct = 0.05, count = 5),
   convergence = c(pct = 0.01, absolute = 1e-6,
@@ -391,15 +373,20 @@ harvest = function(
   # Check if user supplied any weird arguments
   check_any_startup_issues(data, target, convergence, ...)
 
-  # Validate method.
-  method = match.arg(method, c("rake", "nr"))
-  if(method == "nr" && !identical(select_function, "pct")) {
-    # Guard uses the raw user-supplied value BEFORE get_select_function() converts
-    # the default "pct" string to a function object. identical("pct","pct") is TRUE
-    # so the default causes no warning. Fires when user passes a custom function.
-    warning("method='nr' calibrates all variables simultaneously; ",
-            "select_function is ignored.")
-  }
+  # method="nr" removed; throw informative error before match.arg so the
+  # message names the replacement explicitly.
+  if (identical(method, "nr"))
+    stop(paste0(
+      'method="nr" has been removed. Use method="calibrate" instead.\n',
+      'With max_weight=Inf, raking distance (exp) is used automatically.\n',
+      'With max_weight<Inf (default 5), logit distance enforces the cap.'
+    ))
+  method = match.arg(method, c("rake", "calibrate"))
+
+  # min_weight is only enforced by method="calibrate"
+  if (method == "rake" && min_weight > 0)
+    warning('min_weight is ignored by method="rake". ',
+            'Use method="calibrate" to enforce a lower bound.')
 
   # Set up initial weights centered at weight 1
   # sum / length is about twice as fast as mean.
@@ -450,32 +437,83 @@ harvest = function(
   # Basic error checking in the data
   check_any_data_issues(data, target, weights)
 
-  # NR calibration bypass: skip variable selection and IPF entirely.
-  if(method == "nr") {
-    # Pass max_weight directly to nr_calibrate.
-    # When max_weight=Inf: full K×K Newton-Raphson path; converges in 10-20 iters.
-    # When max_weight<Inf: sequential IPF with inline clamping; needs the same
-    # iteration budget as do_rake, so pass max_iterations.
-    nr_max_iter = if (is.finite(max_weight)) max_iterations else 50L
-    weights = nr_calibrate(data, target, weights,
-                           max_iter   = nr_max_iter,
-                           tol        = 1e-8,
-                           verbose    = isTRUE(verbose > 0),
-                           max_weight = max_weight)
-    if(!is.null(weight_column) && !attach_weights) {
+  # Calibrate dispatch: K-dim dual Newton (raking or logit distance)
+  if (method == "calibrate") {
+    # Warn if parameters incompatible with Newton are set to non-default values
+    if (isTRUE(adaptive_order))
+      warning('adaptive_order is ignored by method="calibrate" ',
+              '(Newton optimises all K variables simultaneously).')
+    if (!is.null(convergence[["time"]]) && !is.na(convergence[["time"]]))
+      warning('convergence["time"] is ignored by method="calibrate".')
+    if (!is.null(convergence[["single_weight"]]) &&
+        !is.na(convergence[["single_weight"]]))
+      warning('convergence["single_weight"] is ignored by method="calibrate".')
+
+    # Identify in-scope rows: valid (non-NA, non-OOV) in ALL target variables
+    in_scope <- Reduce("&", lapply(names(target), function(v) {
+      !is.na(factor(data[[v]], levels = names(target[[v]])))
+    }))
+    n_all     <- nrow(data)
+    n_inscope <- sum(in_scope)
+
+    # Build binary indicator matrix X (dense, K columns)
+    target_vars  <- names(target)
+    data_factors <- data[in_scope, target_vars, drop = FALSE]
+    for (v in target_vars)
+      data_factors[[v]] <- factor(data_factors[[v]], levels = names(target[[v]]))
+    carg <- lapply(target_vars, function(v)
+      contrasts(data_factors[[v]], contrasts = FALSE))
+    names(carg) <- target_vars
+    # contrasts.arg with contrasts=FALSE forces identity contrast (K columns),
+    # overriding the default contr.treatment which drops the reference level
+    # and produces only K-1 columns — a necessary deviation from bare model.matrix.
+    X <- model.matrix(~ . - 1, data = data_factors, contrasts.arg = carg)
+
+    # Build targets_adj: compute values from targets_prop then align names to
+    # colnames(X) — handles non-syntactic variable names (hyphens, spaces) that
+    # model.matrix backtick-wraps, which would otherwise cause name mismatches.
+    targets_prop <- unlist(lapply(target_vars, function(v)
+      setNames(target[[v]], paste0(v, names(target[[v]])))))
+    targets_adj  <- targets_prop * n_all / n_inscope
+    names(targets_adj) <- colnames(X)
+
+    # Extract pct / absolute from convergence vector (with defaults)
+    pct_val <- if (!is.null(convergence[["pct"]]) && !is.na(convergence[["pct"]]))
+      convergence[["pct"]] else 1e-3
+    abs_val <- if (!is.null(convergence[["absolute"]]) &&
+                   !is.na(convergence[["absolute"]]))
+      convergence[["absolute"]] else 1e-4
+
+    # Calibrate in-scope rows only
+    w_calib <- calibrate_weights(
+      X           = X,
+      d           = weights[in_scope],
+      targets_adj = targets_adj,
+      min_weight  = min_weight,
+      max_weight  = max_weight,
+      max_iter    = max_iterations,
+      pct         = pct_val,
+      absolute    = abs_val
+    )
+
+    # Re-insert: in-scope rows -> calibrated; OOV rows -> 1
+    # Sum = n_inscope (mean=1) + n_oov (1 each) = n_all -> full mean = 1 exactly
+    w_full           <- rep(1, n_all)
+    w_full[in_scope] <- w_calib
+    weights          <- w_full
+
+    if (!is.null(weight_column) && !attach_weights)
       message("Note: 'weight_column' specified even though ",
-              "'attach_weights=FALSE'. Weights being returned as vector rather ",
-              "than attached to data.")
-    }
-    if(!attach_weights) {
-      return(weights)
-    }
-    if (!is.null(data_before_collapse)) data = data_before_collapse
-    if (!is.null(data_original))        data = data_original
-    new_column_name = name_weight_column(data, weight_column)
-    data[[new_column_name]] = weights
-    attr(data, "target_symbol") = target_symbol
-    if (!is.null(collapsed_levels_attr)) attr(data, "collapsed_levels") = collapsed_levels_attr
+              "'attach_weights=FALSE'. Weights being returned as vector ",
+              "rather than attached to data.")
+    if (!attach_weights) return(weights)
+    if (!is.null(data_before_collapse)) data <- data_before_collapse
+    if (!is.null(data_original))        data <- data_original
+    new_column_name <- name_weight_column(data, weight_column)
+    data[[new_column_name]] <- weights
+    attr(data, "target_symbol") <- target_symbol
+    if (!is.null(collapsed_levels_attr))
+      attr(data, "collapsed_levels") <- collapsed_levels_attr
     return(data)
   }
 
