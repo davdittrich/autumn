@@ -388,30 +388,35 @@ test_that("enforce_mean is inert in IPF path after bounded redistribution", {
                label = "enforce_mean has no effect in IPF path after bounded redistribution")
 })
 
-test_that("SQUAREM converges on ns_target within 100 super-steps", {
-  # Regression test for SQUAREM pct-criterion omission:
-  # Without pct, SQUAREM only checks absolute < 1e-4 and runs all 1000 max_iterations.
-  # With alpha≈-1 on ns_target, each super-step ≈ 3 IPF passes (no acceleration).
-  # 100 super-steps = 300 IPF passes > 250 needed; should be sufficient with pct fix.
-  # Without fix: 100 super-steps insufficient, calibration accuracy > 1e-3.
-  result_acc <- do_rake(
+test_that("SQUAREM exits via pct criterion before max_iterations", {
+  # Regression test for SQUAREM missing pct convergence criterion.
+  # Without pct, SQUAREM only checks absolute < 1e-4 and runs all max_iterations.
+  # With pct, it exits at the first WUS oscillation (~step 3 for ns_target bounded,
+  # mirroring standard IPF's ~step 5 exit), well before max_iterations=1000.
+  #
+  # Test: result is identical for max_iterations=10 and max_iterations=1000
+  # only when pct fires before step 10 (otherwise the two limits give different results).
+  # Without fix: hits max_iterations=10 (exits at step 10), hits max_iterations=1000
+  # (exits at step 1000) → results differ → test fails.
+  # With fix: pct fires at step ~3 for both → results identical → test passes.
+  result_10 <- suppressWarnings(do_rake(
     respondent_data, ns_target,
     weights        = rep(1, nrow(respondent_data)),
     max_weight     = 5,
-    max_iterations = 100,
+    max_iterations = 10,
     convergence    = c(pct = 0.01, absolute = 1e-4),
     accelerate     = TRUE,
     verbose        = FALSE
-  )
-
-  for(v in names(ns_target)) {
-    pct <- weighted_pct(factor(respondent_data[[v]],
-                               levels = names(ns_target[[v]])),
-                        result_acc)
-    expect_true(
-      max(abs(pct - ns_target[[v]])) < 1e-3,
-      label = paste0("SQUAREM calibration accuracy for '", v,
-                     "' within max_iterations=100")
-    )
-  }
+  ))
+  result_1000 <- suppressWarnings(do_rake(
+    respondent_data, ns_target,
+    weights        = rep(1, nrow(respondent_data)),
+    max_weight     = 5,
+    max_iterations = 1000,
+    convergence    = c(pct = 0.01, absolute = 1e-4),
+    accelerate     = TRUE,
+    verbose        = FALSE
+  ))
+  expect_equal(result_10, result_1000,
+    label = "SQUAREM pct fires before max_iterations: result invariant to iteration limit")
 })

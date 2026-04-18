@@ -195,6 +195,7 @@ do_rake = function(data, target, weights,
     # SQUAREM SqS3 acceleration (Varadhan & Roland 2008).
     # Each super-step: 2 rake passes to build CBB extrapolation, 1 stabilisation pass.
     # Reduces ~500 standard iterations to ~30 super-steps for high-imbalance data.
+    squarem_wu_old = Inf   # previous super-step weight_update_sum for pct-with-floor
     for(i in seq_len(max_iterations)) {
       old_weights = weights
 
@@ -263,13 +264,24 @@ do_rake = function(data, target, weights,
                 ", weight_update=", round(weight_update_sum, 6), ")")
       }
 
-      # Convergence checks (same criteria as standard loop, but no pct —
-      # pct compares successive IPF iterations and is meaningless across
-      # multi-IPF super-steps).
+      # Convergence checks.
       if(weight_update_sum < convergence[["absolute"]]) {
         if(verbose > 1) message("Convergence (SQUAREM absolute criterion).")
         break
       }
+
+      # pct criterion: mirrors standard IPF — exit when weight_update_sum stops
+      # improving by more than pct per super-step (or increases). Standard IPF
+      # exits on the first WUS oscillation (~step 5 for ns_target); SQUAREM exits
+      # similarly (~step 3). Both give partial convergence for bounded problems.
+      # Safety for single-variable calibration (test-rake.R:171): v_sq = 0 fires
+      # at line 219 and breaks BEFORE this block.
+      if("pct" %in% names(convergence) &&
+         weight_update_sum > squarem_wu_old * (1 - convergence[["pct"]])) {
+        if(verbose > 1) message("Convergence (SQUAREM pct criterion).")
+        break
+      }
+      squarem_wu_old = weight_update_sum
       if("single_weight" %in% names(convergence) &&
          max(abs(weights - old_weights)) < convergence[["single_weight"]]) {
         if(verbose > 1) message("Convergence (SQUAREM single_weight criterion).")
