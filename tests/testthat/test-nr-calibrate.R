@@ -323,3 +323,29 @@ test_that("nr_calibrate bounded Phase 1 SQUAREM converges on ns_target (max_weig
     )
   }
 })
+
+test_that("harvest method='nr' satisfies calibration targets within 1e-4 on ns_target", {
+  # Regression guard: NR on ns_target (17 variables, n=6691) must converge within
+  # standard 50-iter budget to proportion error < 1e-4. Current error: 2.86e-08.
+  # Prevents regression to pre-fix divergence state (iter 1->2 overshoot).
+  result_nr <- harvest(respondent_data, ns_target,
+                       method = "nr", max_weight = Inf, attach_weights = FALSE)
+
+  # Guard: NR divergence produces NaN/Inf weights; if we zero NAs below,
+  # NaN proportions would falsely appear calibrated for small targets.
+  expect_true(all(is.finite(result_nr)), label = "NR produces finite weights")
+
+  for(v in names(ns_target)) {
+    pct <- weighted_pct(factor(respondent_data[[v]],
+                               levels = names(ns_target[[v]])),
+                        result_nr)
+    # Align to all target levels — weighted_pct may omit zero-count levels
+    # even when the factor has them set. Zero-count categories have pct = 0.
+    pct_aligned <- pct[names(ns_target[[v]])]
+    pct_aligned[is.na(pct_aligned)] <- 0
+    expect_true(
+      max(abs(pct_aligned - ns_target[[v]])) < 1e-4,
+      label = paste0("NR calibration accuracy for '", v, "'")
+    )
+  }
+})
