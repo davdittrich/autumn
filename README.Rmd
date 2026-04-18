@@ -19,7 +19,7 @@ bm <- readRDS("tools/benchmark_results.rds")
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**autumn** calibrates survey data via iterative proportional fitting (raking), producing weights that align a sample's marginal distributions with known population targets. This fork extends the original [aaronrudkin/autumn](https://github.com/aaronrudkin/autumn) with Newton-Raphson calibration, SQUAREM acceleration, automatic sparse-cell collapse, bounded water-filling redistribution, and an outcome-aware design-effect estimator.
+**autumn** calibrates survey data via iterative proportional fitting (raking), producing weights that align a sample's marginal distributions with known population targets. This fork extends the original [aaronrudkin/autumn](https://github.com/aaronrudkin/autumn) with dual Newton calibration (Deville & Särndal 1992), SQUAREM acceleration, automatic sparse-cell collapse, bounded weight calibration, and an outcome-aware design-effect estimator.
 
 ## Installation
 
@@ -93,19 +93,19 @@ attr(weighted_sparse, "collapsed_levels")
 
 For ordered factors, merging is restricted to immediately adjacent surviving levels. Custom auxiliary columns for similarity scoring are supplied via `collapse_vars`.
 
-### Newton-Raphson calibration
+### Dual Newton calibration
 
-`method = "nr"` solves the calibration system via Newton-Raphson rather than Gauss-Seidel IPF. The effective path depends on `max_weight`:
+`method = "calibrate"` solves the calibration system via K-dimensional dual Newton (Deville & Särndal 1992) rather than Gauss-Seidel IPF. The distance function depends on `max_weight`:
 
-- **Unbounded** (`max_weight = Inf`): a single $K \times K$ linear solve per Newton step converges in 10–20 iterations versus 100–500 for IPF. Use this path when data are severely imbalanced and no weight cap is required.
-- **Bounded** (`max_weight < Inf`, including the default of 5): SQUAREM-accelerated water-filling IPF (Phase 1) with per-cell bisection fallback (Phase 2). This path is correct where the previous post-hoc hard clamp was not: weights satisfy the cap and the calibration targets simultaneously.
+- **Unbounded** (`max_weight = Inf`): raking (exponential) distance. A $K \times K$ linear solve per Newton step converges in 10–20 iterations versus 100–500 for IPF. Use this path when data are severely imbalanced and no weight cap is required.
+- **Bounded** (`max_weight < Inf`, including the default of 5): logit distance, which enforces the cap by construction at every Newton iteration. Weights satisfy the cap and calibration targets simultaneously.
 
-```{r nr_demo, eval = FALSE}
-# Unbounded NR — faster on severely imbalanced problems
-harvest(respondent_data, ns_target, method = "nr", max_weight = Inf)
+```{r calibrate_demo, eval = FALSE}
+# Unbounded — faster on severely imbalanced problems
+harvest(respondent_data, ns_target, method = "calibrate", max_weight = Inf)
 
-# Bounded NR — correct per-cell water-filling (default max_weight = 5)
-harvest(respondent_data, ns_target, method = "nr")
+# Bounded — logit distance enforces cap by construction (default max_weight = 5)
+harvest(respondent_data, ns_target, method = "calibrate")
 ```
 
 ### SQUAREM-accelerated IPF
@@ -161,9 +161,10 @@ mem_small_pct <- round(
 # than the default and values > 1 mean slower.
 m_med <- setNames(as.numeric(bm$methods$median),
                   as.character(bm$methods$expression))
-unb_vs_bounded     <- round(m_med["rake_bounded"]        / m_med["rake_unbounded"],     1)
-squarem_vs_base    <- round(m_med["rake_bounded_squarem"] / m_med["rake_bounded"],       1)
-nr_unb_vs_rake_unb <- round(m_med["nr_unbounded"]         / m_med["rake_unbounded"],     1)
+unb_vs_bounded          <- round(m_med["rake_bounded"]           / m_med["rake_unbounded"],      1)
+squarem_vs_base         <- round(m_med["rake_bounded_squarem"]    / m_med["rake_bounded"],        1)
+cal_unb_vs_rake_unb     <- round(m_med["calibrate_unbounded"]     / m_med["rake_unbounded"],      1)
+cal_bnd_vs_rake_bnd     <- round(m_med["calibrate_bounded"]       / m_med["rake_bounded"],        1)
 ```
 
 ### Comparison with anesrake
@@ -184,7 +185,7 @@ print(bm$medium[, c("expression", "median", "mem_alloc")])
 
 ### Calibration method comparison
 
-The six parameter combinations cover two axes: bounding (`max_weight` finite vs. `Inf`) and algorithm (`method = "rake"` vs. `"nr"`, and `accelerate`):
+The six parameter combinations cover two axes: bounding (`max_weight` finite vs. `Inf`) and algorithm (`method = "rake"` vs. `"calibrate"`, and `accelerate`):
 
 ```{r bm_methods, echo = FALSE}
 print(bm$methods[, c("expression", "median", "mem_alloc", "n_itr")])
@@ -192,10 +193,10 @@ print(bm$methods[, c("expression", "median", "mem_alloc", "n_itr")])
 
 Key guidance from the results above:
 
-- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this dataset and uses 98% less memory — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
-- **SQUAREM** (`accelerate = TRUE`) is `r if (squarem_vs_base >= 1) paste0(squarem_vs_base, "× *slower*") else paste0(round(1/squarem_vs_base, 1), "× *faster*")` on this well-conditioned bounded dataset. Both plain IPF and SQUAREM exit via the `pct` convergence criterion within 3–5 passes on this problem, so SQUAREM's iteration savings are minimal; its per-super-step overhead (two IPF passes plus a projected CBB step) determines the net result. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
-- **Unbounded NR** (`method = "nr", max_weight = Inf`) is `r nr_unb_vs_rake_unb`× slower than unbounded rake on this 10-variable problem. NR's advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+. Note that `accelerate` has no effect on `method = "nr"` — the bounded path hard-codes SQUAREM internally and the unbounded path is a direct K×K solve.
-- **Bounded NR** (`method = "nr"`) is a correctness tool: it satisfies the weight cap and calibration targets simultaneously. The previous post-hoc hard clamp broke calibration; bounded NR does not.
+- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this dataset — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) is `r if (squarem_vs_base >= 1) paste0(squarem_vs_base, "× *slower*") else paste0(round(1/squarem_vs_base, 1), "× *faster*")` on this well-conditioned bounded dataset. Both plain IPF and SQUAREM exit via the `pct` convergence criterion within 3–5 passes on this problem, so SQUAREM's iteration savings are minimal; its per-super-step overhead determines the net result. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
+- **Unbounded calibrate** (`method = "calibrate", max_weight = Inf`) is `r cal_unb_vs_rake_unb`× slower than unbounded rake on this 10-variable problem. `calibrate`'s advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+.
+- **Bounded calibrate** (`method = "calibrate", max_weight = 50`) is `r if (cal_bnd_vs_rake_bnd < 1) paste0(round(1/cal_bnd_vs_rake_bnd, 1), "× *faster*") else paste0(cal_bnd_vs_rake_bnd, "× *slower*")` than bounded rake on this dataset. It uses logit distance (Deville & Särndal 1992), which enforces the cap by construction at every Newton step. `max_weight = 5` (the default) is infeasible for this dataset — the unconstrained raking max weight is ~43 — so `max_weight = 50` is used here; the timing gap partly reflects different cap regimes.
 
 Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations.
 

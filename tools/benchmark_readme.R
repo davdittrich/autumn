@@ -58,24 +58,24 @@ bm_medium$expression <- c("autumn", "anesrake")
 # ------------------------------------------------------------------
 # Methods benchmark: all 6 autumn parameter combinations
 # Uses 10-variable problem (respondent_data / ns_target).
-# iterations = 10 because nr_bounded is ~10s per call.
 # ------------------------------------------------------------------
 bm_methods <- suppressWarnings(bench::mark(
-  rake_bounded          = harvest(respondent_data, ns_target),
-  rake_bounded_squarem  = harvest(respondent_data, ns_target, accelerate = TRUE),
-  rake_unbounded        = harvest(respondent_data, ns_target, max_weight = Inf),
+  rake_bounded           = harvest(respondent_data, ns_target),
+  rake_bounded_squarem   = harvest(respondent_data, ns_target, accelerate = TRUE),
+  rake_unbounded         = harvest(respondent_data, ns_target, max_weight = Inf),
   rake_unbounded_squarem = harvest(respondent_data, ns_target,
                                    max_weight = Inf, accelerate = TRUE),
-  nr_bounded            = harvest(respondent_data, ns_target, method = "nr"),
-  nr_unbounded          = harvest(respondent_data, ns_target,
-                                  method = "nr", max_weight = Inf),
-  iterations = 10,
+  calibrate_bounded      = harvest(respondent_data, ns_target,
+                                   method = "calibrate", max_weight = 50),
+  calibrate_unbounded    = harvest(respondent_data, ns_target,
+                                   method = "calibrate", max_weight = Inf),
+  iterations = 20,
   check      = FALSE
 ))
 bm_methods$expression <- c(
   "rake_bounded", "rake_bounded_squarem",
   "rake_unbounded", "rake_unbounded_squarem",
-  "nr_bounded", "nr_unbounded"
+  "calibrate_bounded", "calibrate_unbounded"
 )
 
 # ------------------------------------------------------------------
