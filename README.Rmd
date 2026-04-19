@@ -150,32 +150,38 @@ design_effect(weighted_data$weights,
 ## Performance
 
 ```{r speedup_calc, echo = FALSE}
-ratio_small  <- round(as.numeric(bm$small$median[2])  / as.numeric(bm$small$median[1]),  1)
-ratio_medium <- round(as.numeric(bm$medium$median[2]) / as.numeric(bm$medium$median[1]), 1)
+bm_s     <- setNames(as.numeric(bm$small$median),    as.character(bm$small$expression))
+bm_m     <- setNames(as.numeric(bm$medium$median),   as.character(bm$medium$expression))
+bm_s_mem <- setNames(as.numeric(bm$small$mem_alloc), as.character(bm$small$expression))
+
+ratio_small_unb  <- round(bm_s["anesrake (unbounded)"] / bm_s["autumn (unbounded)"], 1)
+ratio_small_bnd  <- round(bm_s["anesrake (cap = 5)"]   / bm_s["autumn (cap = 5)"],   1)
+ratio_medium_unb <- round(bm_m["anesrake (unbounded)"] / bm_m["autumn (unbounded)"], 1)
+ratio_medium_bnd <- round(bm_m["anesrake (cap = 5)"]   / bm_m["autumn (cap = 5)"],   1)
 mem_small_pct <- round(
-  (as.numeric(bm$small$mem_alloc[2]) - as.numeric(bm$small$mem_alloc[1])) /
-    as.numeric(bm$small$mem_alloc[2]) * 100
+  (bm_s_mem["anesrake (unbounded)"] - bm_s_mem["autumn (unbounded)"]) /
+    bm_s_mem["anesrake (unbounded)"] * 100
 )
 # Methods benchmark: extract medians by expression label for inline prose.
 # Ratios are expressed as (method / rake_bounded) so values < 1 mean faster
 # than the default and values > 1 mean slower.
 m_med <- setNames(as.numeric(bm$methods$median),
                   as.character(bm$methods$expression))
-unb_vs_bounded          <- round(m_med["rake_bounded"]           / m_med["rake_unbounded"],      1)
-squarem_vs_base         <- round(m_med["rake_bounded_squarem"]    / m_med["rake_bounded"],        1)
-cal_unb_vs_rake_unb     <- round(m_med["calibrate_unbounded"]     / m_med["rake_unbounded"],      1)
-cal_bnd_vs_rake_bnd     <- round(m_med["calibrate_bounded"]       / m_med["rake_bounded"],        1)
+unb_vs_bounded      <- round(m_med["rake_bounded"]        / m_med["rake_unbounded"],  1)
+squarem_vs_base     <- round(m_med["rake_bounded_squarem"] / m_med["rake_bounded"],    1)
+cal_unb_vs_rake_unb <- round(m_med["calibrate_unbounded"]  / m_med["rake_unbounded"],  1)
+cal_bnd_vs_rake_bnd <- round(m_med["calibrate_bounded"]    / m_med["rake_bounded"],    1)
 ```
 
 ### Comparison with anesrake
 
-On the included 6,691-respondent dataset raked on 10 variables, autumn's median runtime is `r ratio_small`× faster than anesrake and allocates `r mem_small_pct`% less memory:
+On the included 6,691-respondent dataset raked on 10 variables, autumn is `r ratio_small_unb`× faster than anesrake (unbounded) and allocates `r mem_small_pct`% less memory. With a cap of 5 — where both algorithms partially converge since the unconstrained max weight is ~26 — autumn is `r ratio_small_bnd`× faster:
 
 ```{r bm_small, echo = FALSE}
 print(bm$small[, c("expression", "median", "mem_alloc")])
 ```
 
-On a harder problem — the same dataset raked on 17 variables — autumn is `r ratio_medium`× faster and allocates substantially less memory:
+On a harder problem — the same dataset raked on 17 variables — autumn is `r ratio_medium_unb`× faster (unbounded) and `r ratio_medium_bnd`× faster (cap = 5):
 
 ```{r bm_medium, echo = FALSE}
 print(bm$medium[, c("expression", "median", "mem_alloc")])
@@ -193,10 +199,10 @@ print(bm$methods[, c("expression", "median", "mem_alloc", "n_itr")])
 
 Key guidance from the results above:
 
-- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this dataset — the weight cap forces additional constraint-satisfaction work per cell per iteration. Use it when no cap is needed.
-- **SQUAREM** (`accelerate = TRUE`) is `r if (squarem_vs_base >= 1) paste0(squarem_vs_base, "× *slower*") else paste0(round(1/squarem_vs_base, 1), "× *faster*")` on this well-conditioned bounded dataset. Both plain IPF and SQUAREM exit via the `pct` convergence criterion within 3–5 passes on this problem, so SQUAREM's iteration savings are minimal; its per-super-step overhead determines the net result. Use SQUAREM on poorly-conditioned problems where plain IPF requires thousands of iterations.
-- **Unbounded calibrate** (`method = "calibrate", max_weight = Inf`) is `r cal_unb_vs_rake_unb`× slower than unbounded rake on this 10-variable problem. `calibrate`'s advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+.
-- **Bounded calibrate** (`method = "calibrate", max_weight = 50`) is `r if (cal_bnd_vs_rake_bnd < 1) paste0(round(1/cal_bnd_vs_rake_bnd, 1), "× *faster*") else paste0(cal_bnd_vs_rake_bnd, "× *slower*")` than bounded rake on this dataset. It uses logit distance (Deville & Särndal 1992), which enforces the cap by construction at every Newton step. `max_weight = 5` (the default) is infeasible for this dataset — the unconstrained raking max weight is ~43 — so `max_weight = 50` is used here; the timing gap partly reflects different cap regimes.
+- **Unbounded rake** (`max_weight = Inf`) is `r unb_vs_bounded`× faster than bounded rake on this dataset. The gap is large because bounded rake runs to max iterations without converging (the unconstrained max weight is ~26, exceeding the cap of 5); unbounded rake converges fully. Use it when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) is `r if (squarem_vs_base >= 1) paste0(squarem_vs_base, "× *slower*") else paste0(round(1/squarem_vs_base, 1), "× *faster*")` than plain bounded rake on this dataset. On this infeasible bounded problem, SQUAREM reaches a fixed point near the cap boundary far more quickly than plain IPF. SQUAREM's advantage scales with problem difficulty; on well-conditioned problems where plain IPF converges in 3–5 passes, per-super-step overhead can offset the iteration savings.
+- **Unbounded calibrate** (`method = "calibrate", max_weight = Inf`) is `r if (cal_unb_vs_rake_unb >= 1) paste0(cal_unb_vs_rake_unb, "× *slower*") else paste0(round(1/cal_unb_vs_rake_unb, 1), "× *faster*")` than unbounded rake on this 10-variable problem. `calibrate`'s advantage emerges on severely imbalanced data where IPF requires hundreds of iterations; a single K×K Newton step costs more but converges in 10–20 steps versus 500+.
+- **Bounded calibrate** (`method = "calibrate", max_weight = 5, auto_collapse = TRUE`) is `r if (cal_bnd_vs_rake_bnd < 1) paste0(round(1/cal_bnd_vs_rake_bnd, 1), "× *faster*") else paste0(cal_bnd_vs_rake_bnd, "× *slower*")` than bounded rake on this dataset. It uses logit distance (Deville & Särndal 1992), which enforces the cap by construction at every Newton step. The unconstrained raking max weight is ~26; `auto_collapse` merges three sparse cells before calibration, after which mean = 1 and max = 4.51. Note that bounded rake (`rake_bounded` row) partially converges on this dataset at `max_weight = 5` without collapse — the cap binds before full convergence — so its timing reflects an early exit, not a fully calibrated solution.
 
 Tightening convergence criteria (`convergence["pct"]` and `convergence["absolute"]`) yields further gains at the cost of additional iterations.
 

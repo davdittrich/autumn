@@ -22,12 +22,16 @@ for (nm in names(ns_target)) {
 # Small benchmark: 6,691 obs, 10 variables
 # ------------------------------------------------------------------
 bm_small <- suppressWarnings(bench::mark(
-  "autumn"   = harvest(respondent_data, ns_target),
-  "anesrake" = anesrake::anesrake(ns_target, df_anesrake, df_anesrake$caseid),
-  iterations = 50,
+  "autumn (unbounded)"   = harvest(respondent_data, ns_target, max_weight = Inf),
+  "autumn (cap = 5)"     = harvest(respondent_data, ns_target),
+  "anesrake (unbounded)" = anesrake::anesrake(ns_target, df_anesrake, df_anesrake$caseid),
+  "anesrake (cap = 5)"   = anesrake::anesrake(ns_target, df_anesrake, df_anesrake$caseid,
+                                               cap = 5),
+  iterations = 20,
   check      = FALSE
 ))
-bm_small$expression <- c("autumn", "anesrake")
+bm_small$expression <- c("autumn (unbounded)", "autumn (cap = 5)",
+                          "anesrake (unbounded)", "anesrake (cap = 5)")
 
 # ------------------------------------------------------------------
 # Medium benchmark: 6,691 obs, 17 variables (7 synthetic binary vars added)
@@ -48,12 +52,16 @@ for (i in seq_len(7)) {
 }
 
 bm_medium <- suppressWarnings(bench::mark(
-  "autumn"   = harvest(rdata_17, target_17),
-  "anesrake" = anesrake::anesrake(target_17, anesrake_17, anesrake_17$caseid),
-  iterations = 20,
+  "autumn (unbounded)"   = harvest(rdata_17, target_17, max_weight = Inf),
+  "autumn (cap = 5)"     = harvest(rdata_17, target_17),
+  "anesrake (unbounded)" = anesrake::anesrake(target_17, anesrake_17, anesrake_17$caseid),
+  "anesrake (cap = 5)"   = anesrake::anesrake(target_17, anesrake_17, anesrake_17$caseid,
+                                               cap = 5),
+  iterations = 10,
   check      = FALSE
 ))
-bm_medium$expression <- c("autumn", "anesrake")
+bm_medium$expression <- c("autumn (unbounded)", "autumn (cap = 5)",
+                           "anesrake (unbounded)", "anesrake (cap = 5)")
 
 # ------------------------------------------------------------------
 # Methods benchmark: all 6 autumn parameter combinations
@@ -66,7 +74,8 @@ bm_methods <- suppressWarnings(bench::mark(
   rake_unbounded_squarem = harvest(respondent_data, ns_target,
                                    max_weight = Inf, accelerate = TRUE),
   calibrate_bounded      = harvest(respondent_data, ns_target,
-                                   method = "calibrate", max_weight = 50),
+                                   method = "calibrate", max_weight = 5,
+                                   auto_collapse = TRUE),
   calibrate_unbounded    = harvest(respondent_data, ns_target,
                                    method = "calibrate", max_weight = Inf),
   iterations = 20,

@@ -170,24 +170,29 @@ calibration weights are not.
 
 ### Comparison with anesrake
 
-On the included 6,691-respondent dataset raked on 10 variables, autumn’s
-median runtime is 9.1× faster than anesrake and allocates 91% less
-memory:
+On the included 6,691-respondent dataset raked on 10 variables, autumn
+is 61× faster than anesrake (unbounded) and allocates 99% less memory.
+With a cap of 5 — where both algorithms partially converge since the
+unconstrained max weight is ~26 — autumn is 1.4× faster:
 
-    #> # A data frame: 2 × 3
-    #>   expression   median mem_alloc
-    #>   <chr>      <bch:tm> <bch:byt>
-    #> 1 autumn        1.26s    1.13GB
-    #> 2 anesrake     11.47s   13.01GB
+    #> # A data frame: 4 × 3
+    #>   expression             median mem_alloc
+    #>   <chr>                <bch:tm> <bch:byt>
+    #> 1 autumn (unbounded)    190.7ms  157.81MB
+    #> 2 autumn (cap = 5)        8.15s    7.48GB
+    #> 3 anesrake (unbounded)   11.62s   13.01GB
+    #> 4 anesrake (cap = 5)     11.48s   13.01GB
 
 On a harder problem — the same dataset raked on 17 variables — autumn is
-9.1× faster and allocates substantially less memory:
+60.1× faster (unbounded) and 1.5× faster (cap = 5):
 
-    #> # A data frame: 2 × 3
-    #>   expression   median mem_alloc
-    #>   <chr>      <bch:tm> <bch:byt>
-    #> 1 autumn        1.25s    1.13GB
-    #> 2 anesrake     11.47s   13.03GB
+    #> # A data frame: 4 × 3
+    #>   expression             median mem_alloc
+    #>   <chr>                <bch:tm> <bch:byt>
+    #> 1 autumn (unbounded)   188.39ms  160.71MB
+    #> 2 autumn (cap = 5)        7.29s    7.48GB
+    #> 3 anesrake (unbounded)   11.32s   13.03GB
+    #> 4 anesrake (cap = 5)     10.94s   13.03GB
 
 `survey::rake` does not complete the 17-variable rake under default
 parameters and is excluded from that benchmark.
@@ -201,37 +206,41 @@ and `accelerate`):
     #> # A data frame: 6 × 4
     #>   expression               median mem_alloc n_itr
     #>   <chr>                  <bch:tm> <bch:byt> <int>
-    #> 1 rake_bounded              1.25s    1.13GB    20
-    #> 2 rake_bounded_squarem      1.77s    1.67GB    20
-    #> 3 rake_unbounded          49.45ms    49.3MB    20
-    #> 4 rake_unbounded_squarem 155.34ms  142.74MB    20
-    #> 5 calibrate_bounded      106.97ms   224.9MB    20
-    #> 6 calibrate_unbounded     113.3ms  210.81MB    20
+    #> 1 rake_bounded              7.14s    7.48GB    20
+    #> 2 rake_bounded_squarem   661.06ms  737.89MB    20
+    #> 3 rake_unbounded          169.8ms  157.09MB    20
+    #> 4 rake_unbounded_squarem 838.34ms   773.7MB    20
+    #> 5 calibrate_bounded      593.76ms    1.15GB    20
+    #> 6 calibrate_unbounded    107.48ms  210.81MB    20
 
 Key guidance from the results above:
 
-- **Unbounded rake** (`max_weight = Inf`) is 25.4× faster than bounded
-  rake on this dataset — the weight cap forces additional
-  constraint-satisfaction work per cell per iteration. Use it when no
-  cap is needed.
-- **SQUAREM** (`accelerate = TRUE`) is 1.4× *slower* on this
-  well-conditioned bounded dataset. Both plain IPF and SQUAREM exit via
-  the `pct` convergence criterion within 3–5 passes on this problem, so
-  SQUAREM’s iteration savings are minimal; its per-super-step overhead
-  determines the net result. Use SQUAREM on poorly-conditioned problems
-  where plain IPF requires thousands of iterations.
+- **Unbounded rake** (`max_weight = Inf`) is 42.1× faster than bounded
+  rake on this dataset. The gap is large because bounded rake runs to
+  max iterations without converging (the unconstrained max weight is
+  ~26, exceeding the cap of 5); unbounded rake converges fully. Use it
+  when no cap is needed.
+- **SQUAREM** (`accelerate = TRUE`) is 10× *faster* than plain bounded
+  rake on this dataset. On this infeasible bounded problem, SQUAREM
+  reaches a fixed point near the cap boundary far more quickly than
+  plain IPF. SQUAREM’s advantage scales with problem difficulty; on
+  well-conditioned problems where plain IPF converges in 3–5 passes,
+  per-super-step overhead can offset the iteration savings.
 - **Unbounded calibrate** (`method = "calibrate", max_weight = Inf`) is
-  2.3× slower than unbounded rake on this 10-variable problem.
+  1.7× *faster* than unbounded rake on this 10-variable problem.
   `calibrate`’s advantage emerges on severely imbalanced data where IPF
   requires hundreds of iterations; a single K×K Newton step costs more
   but converges in 10–20 steps versus 500+.
-- **Bounded calibrate** (`method = "calibrate", max_weight = 50`) is 10×
+- **Bounded calibrate**
+  (`method = "calibrate", max_weight = 5, auto_collapse = TRUE`) is 10×
   *faster* than bounded rake on this dataset. It uses logit distance
   (Deville & Särndal 1992), which enforces the cap by construction at
-  every Newton step. `max_weight = 5` (the default) is infeasible for
-  this dataset — the unconstrained raking max weight is ~43 — so
-  `max_weight = 50` is used here; the timing gap partly reflects
-  different cap regimes.
+  every Newton step. The unconstrained raking max weight is ~26;
+  `auto_collapse` merges three sparse cells before calibration, after
+  which mean = 1 and max = 4.51. Note that bounded rake (`rake_bounded`
+  row) partially converges on this dataset at `max_weight = 5` without
+  collapse — the cap binds before full convergence — so its timing
+  reflects an early exit, not a fully calibrated solution.
 
 Tightening convergence criteria (`convergence["pct"]` and
 `convergence["absolute"]`) yields further gains at the cost of
