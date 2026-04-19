@@ -27,7 +27,14 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
   # Precondition: all weights must be non-negative. SQUAREM's step-halving
   # (harvest.R: pmax(w_star, .Machine$double.eps)) enforces this upstream;
   # the water-filling loop below would silently mis-calibrate on negative inputs.
-  current = weighted_pct(cache[[var]]$x, weights)[names(target[[var]])]
+  # Use only in-scope weights for the proportion denominator. Including OOV
+  # weights inflates T_k = target[k]*W each pass (W_total > W_v), compounding
+  # across iterations so mean(weights) >> 1 after convergence.
+  na_rows  = cache[[var]]$na_rows
+  w_active = weights
+  if (length(na_rows) > 0L) w_active[na_rows] = 0
+
+  current = weighted_pct(cache[[var]]$x, w_active)[names(target[[var]])]
 
   # max_dev: scalar imbalance measure before this adjustment.
   max_dev = max(abs(target[[var]] / current - 1), na.rm = TRUE)
@@ -35,7 +42,7 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
   if (!is.finite(max_weight)) {
     # ── Unbounded path: original vectorised IPF ──────────────────────────────
     mult = unname(target[[var]] / current)[cache[[var]]$idx]
-    mult[cache[[var]]$na_rows] = 1
+    mult[na_rows] = 1
     return(list(weights = weights * mult, max_dev = max_dev))
   }
 
@@ -49,7 +56,7 @@ single_adjust = function(weights, target, var, cache, max_weight = Inf) {
   #   sum(new_w[cell_k]) = T_k  for feasible cells (T_k <= n_k * max_weight)
   #   new_w[i] <= max_weight    for all i in defined cells
   #   new_w[na_rows] unchanged  (OOV and NA rows not in any cell_rows[[k]])
-  W     = sum(weights)
+  W     = sum(w_active)  # in-scope weight sum only (OOV excluded)
   new_w = weights   # copy; updated per cell; na_rows left at original values
 
   K = length(target[[var]])

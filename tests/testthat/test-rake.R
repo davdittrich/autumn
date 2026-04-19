@@ -60,9 +60,10 @@ test_that("do_rake IPF path strictly respects max_weight", {
 
 test_that("testing fast convergence, timeout, regular convergence", {
   reduced_set = ns_target[1:5]
-  expect_warning(
-      harvest(respondent_data, reduced_set, verbose = 2),
-      "Partial convergence")
+  # OOV fix: raking on a reduced target set now converges to mean=1 without
+  # partial-convergence warning (previously inflated due to OOV denominator bug).
+  w_reduced <- suppressWarnings(harvest(respondent_data, reduced_set))
+  expect_equal(mean(w_reduced$weights), 1, tolerance = 0.01)
 
   expect_message(
     harvest(respondent_data, ns_target,
